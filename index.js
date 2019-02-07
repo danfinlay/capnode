@@ -4,8 +4,8 @@ const EventEmitter = require('events')
 const nodeify = require('./lib/nodeify')
 
 module.exports = {
-  createServer,
-  createClient,
+  create,
+  connect,
 }
 
 /*
@@ -28,12 +28,13 @@ module.exports = {
  * @param {ApiObj} obj - The object to expose as the API over the stream.
  * @returns Stream - A duplex stream allowing client connections.
  */
-function createServer (obj) {
-  const reg = createMethodRegistry(obj)
+function create (obj, methodRegistry = {}) {
+  const initialApi = createMethodRegistry(obj, methodRegistry)
+
   return dnode({
-    data: reg.data,
+    data: initialApi,
     callMethod: (methodId, params, cb) => {
-      const method = reg.pointers[methodId]
+      const method = methodRegistry[methodId]
       method(...params)
       .then((result) => { cb(null, result) })
       .catch((reason) => { cb(reason) })
@@ -55,56 +56,53 @@ function createServer (obj) {
  *        value: 'baz',
  *      }
  *    }
- *    pointers: {
+ *    methodReg: {
  *      [UNIQUE_ID_1]: theMethod,
  *    }
  * }
  *
  */
 
-function createMethodRegistry (obj) {
-  const data = {}
-  const pointers = {}
+function createMethodRegistry (obj, methodReg) {
+  const res = serializeObjectForRemote(obj, methodReg)
 
-  populateRegistryBranch(obj, data, pointers)
-
-  return { data, pointers }
+  return res
 }
 
-
-function populateRegistryBranch(obj, data, pointers) {
+function serializeObjectForRemote (obj, methodReg, res = {}) {
   Object.keys(obj).forEach((key) => {
     switch (typeof obj[key]) {
       case 'function':
         const methodId = rand()
-        pointers[methodId] = async (...arguments) => {
+        methodReg[methodId] = async (...arguments) => {
           // avoid "this capture".
           return (1, obj[key])(...arguments)
         }
-        data[key] = {
+        res[key] = {
           type: 'function',
           methodId,
         }
         break
 
       case 'object':
-        data[key] = {
+        res[key] = {
           type: 'object',
           value: {},
         }
-        populateRegistryBranch(obj[key], data[key].value, pointers)
+        res[key].value = serializeObjectForRemote(obj[key], methodReg)
         break
 
       default:
-        data[key] = {
+        res[key] = {
           type: typeof obj[key],
           value: obj[key],
         }
     }
   })
+  return res
 }
 
-function createClient (serverStream) {
+function connect (serverStream) {
   return new Client(serverStream)
 }
 
@@ -162,7 +160,6 @@ function reconstructObjectBranch (api, methods, remote) {
     }
   })
 }
-
 
 // TODO: Make actually crypto hard:
 function rand () {

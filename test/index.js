@@ -3,12 +3,12 @@ const capnode = require('../')
 
 test('a basic connection', (t) => {
 
-  const server = capnode.createServer({
+  const server = capnode.create({
     foo: () => Promise.resolve('bar'),
     bam: 'baz',
   })
 
-  const client = capnode.createClient(server)
+  const client = capnode.connect(server)
 
   client.on('remote', async (remote) => {
 
@@ -23,7 +23,7 @@ test('a basic connection', (t) => {
 
 test('a method in an object', (t) => {
 
-  const server = capnode.createServer({
+  const server = capnode.create({
     foo: {
       bar: () => Promise.resolve('bam'),
       bizzam: {
@@ -32,7 +32,7 @@ test('a method in an object', (t) => {
     },
   })
 
-  const client = capnode.createClient(server)
+  const client = capnode.connect(server)
 
   client.on('remote', async (remote) => {
 
@@ -49,15 +49,14 @@ test('a method in an object', (t) => {
 })
 
 
-/*
 test('ability to return additional promise-returning functions', (t) => {
-  const server = capnode.createServer({
+  const server = capnode.create({
     foo: () => Promise.resolve({
       bam: (arg) => Promise.resolve('baz' + arg)
     }),
   })
 
-  const client = capnode.createClient(server)
+  const client = capnode.connect(server)
 
   client.on('remote', async (remote) => {
 
@@ -72,4 +71,6 @@ test('ability to return additional promise-returning functions', (t) => {
 
   client.pipe(server).pipe(client)
 })
-*/
+
+test('ability to pass promiseResolving func back to server')
+
