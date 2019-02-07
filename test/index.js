@@ -12,7 +12,6 @@ test('a basic connection', (t) => {
 
   client.on('remote', async (remote) => {
 
-    console.log('remote receivede', remote)
     t.equal(remote.bam, 'baz', 'remote returned concrete value.')
     const result = await remote.foo()
     t.equal(result, 'bar', 'remote returned correctly.')

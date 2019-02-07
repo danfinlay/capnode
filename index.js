@@ -29,14 +29,11 @@ module.exports = {
  * @returns Stream - A duplex stream allowing client connections.
  */
 function createServer (obj) {
-  console.log('creating server')
   const reg = createMethodRegistry(obj)
   return dnode({
     data: reg.data,
     callMethod: (methodId, params, cb) => {
       const method = reg.pointers[methodId]
-      console.log('calling method', method)
-      console.log('with args', ...params)
       method(...params)
       .then((result) => { cb(null, result) })
       .catch((reason) => { cb(reason) })
@@ -104,14 +101,11 @@ class Client extends EventEmitter {
   }
 
   pipe(target) {
-    console.log('pipe called')
     if (!this.d) {
       this.d = dnode()
-      console.log('dnode created')
     }
 
     this.d.on('remote', (remote) => {
-      console.log('remote called', remote)
       this.remote = remote
       this.api = constructApiFrom(remote)
       this.emit('remote', this.api)
@@ -123,9 +117,7 @@ class Client extends EventEmitter {
 }
 
 function constructApiFrom (remote) {
-  console.dir(remote)
   const methods = remote.data
-  console.dir(methods)
   const api = {}
 
   Object.keys(methods).forEach((methodName) => {
