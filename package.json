@@ -1,0 +1,24 @@
+{
+  "name": "capnode",
+  "version": "1.0.0",
+  "description": "A JS promise-based capabilities system over any stream.",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test"
+  },
+  "keywords": [
+    "promise",
+    "rpc",
+    "stream"
+  ],
+  "author": "Dan Finlay <dan@danfinlay.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "tape": "^4.9.2"
+  },
+  "dependencies": {
+    "dnode": "^1.2.2",
+    "duplex": "^1.0.0",
+    "promise-to-callback": "^1.0.0"
+  }
+}
