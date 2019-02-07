@@ -2,6 +2,7 @@ const dnode = require('dnode')
 const duplex = require('duplex')
 const EventEmitter = require('events')
 const nodeify = require('./lib/nodeify')
+const MuxDemux = require('mux-demux')
 
 module.exports = {
   create,
@@ -28,19 +29,97 @@ module.exports = {
  * @param {ApiObj} obj - The object to expose as the API over the stream.
  * @returns Stream - A duplex stream allowing client connections.
  */
-function create (obj, methodRegistry = {}) {
-  const initialApi = createMethodRegistry(obj, methodRegistry)
+function create ({ localApi = {}, localMethodReg = {}, remoteMethodReg = {}, remoteStream = null }) {
+  const initialApi = createMethodRegistry(localApi, localMethodReg)
+  const connections = new WeakMap() // Stream to a map of its remote method ids.
+  let remote, remoteApi // Will represent a connection when complete.
 
-  return dnode({
-    data: initialApi,
-    callMethod: (methodId, params, cb) => {
-      const method = methodRegistry[methodId]
-      method(...params)
-      .then((result) => { cb(null, result) })
-      .catch((reason) => { cb(reason) })
-    },
+  let mx, inbound, outbound
+  multiplex(remoteStream)
+
+  function multiplex (stream) {
+    mx = MuxDemux(stream)
+    inbound = mx.createStream('inbound')
+    outbound = mx.createStream('outbound')
+  }
+
+  function exposeLocalApi (newStream) {
+    if (!remoteStream) {
+      remoteStream = newStream
+      multiplex(remoteStream)
+    }
+
+    const inboundD = dnode({
+      data: initialApi,
+      callMethod: (methodId, serializedParams, cb) => {
+        const method = localMethodReg[methodId]
+        const params = deserializeRemoteData(serializedParams, remoteMethodReg, )
+
+        method(...params)
+        .then((result) => { cb(null, result) })
+        .catch((reason) => { cb(reason) })
+      },
+    })
+
+    inbound.pipe(inboundD).pipe(inbound)
+  }
+
+  async function requestRemoteApi () {
+    const outboundD = dnode()
+    outbound.pipe(outboundD).pipe(outbound)
+    console.log('composing dnode with', outbound)
+    return new Promise ((res, rej) => {
+      outboundD.on('remote', (_remote) => {
+        console.log('remote called!', _remote)
+        remote = _remote
+        remoteApi = constructApiFrom(remote)
+        res(remoteApi)
+      })
+    })
+  }
+
+
+  return {
+    requestRemoteApi,
+    exposeLocalApi,
+    stream: mx,
+  }
+}
+
+function deserializeRemoteData (data, remoteMethodReg, remote) {
+  const methods = remote.data
+  const api = {}
+
+  reconstructObjectBranch(api, methods, remote)
+
+  return api
+}
+
+function reconstructObjectBranch (api, methods, remote) {
+  Object.keys(methods).forEach((methodName) => {
+    switch (methods[methodName].type) {
+      case 'function':
+        api[methodName] = (...arguments) => {
+          return new Promise((res, rej) => {
+            const methodId = methods[methodName].methodId
+            remote.callMethod(methodId, [...arguments], (err, ...responses) => {
+              if (err) return rej(err)
+              res(...responses)
+            })
+          })
+        }
+        break
+      case 'object':
+        api[methodName] = {}
+        reconstructObjectBranch(api[methodName], methods[methodName].value, remote)
+        break
+      default:
+        api[methodName] = methods[methodName].value
+    }
   })
 }
+
+
 
 /*
  * SAMPLE METHOD REGISTRY
@@ -109,7 +188,6 @@ function connect (serverStream) {
 class Client extends EventEmitter {
   constructor () {
     super()
-    this.stream = duplex()
   }
 
   pipe(target) {
@@ -123,42 +201,8 @@ class Client extends EventEmitter {
       this.emit('remote', this.api)
     })
 
-    target.pipe(this.d).pipe(target)
-    return this.stream
+    return target.pipe(this.d).pipe(target)
   }
-}
-
-function constructApiFrom (remote) {
-  const methods = remote.data
-  const api = {}
-
-  reconstructObjectBranch(api, methods, remote)
-
-  return api
-}
-
-function reconstructObjectBranch (api, methods, remote) {
-  Object.keys(methods).forEach((methodName) => {
-    switch (methods[methodName].type) {
-      case 'function':
-        api[methodName] = (...arguments) => {
-          return new Promise((res, rej) => {
-            const methodId = methods[methodName].methodId
-            remote.callMethod(methodId, [...arguments], (err, ...responses) => {
-              if (err) return rej(err)
-              res(...responses)
-            })
-          })
-        }
-        break
-      case 'object':
-        api[methodName] = {}
-        reconstructObjectBranch(api[methodName], methods[methodName].value, remote)
-        break
-      default:
-        api[methodName] = methods[methodName].value
-    }
-  })
 }
 
 // TODO: Make actually crypto hard:

@@ -4,22 +4,26 @@ const capnode = require('../')
 test('a basic connection', (t) => {
 
   const server = capnode.create({
-    foo: () => Promise.resolve('bar'),
-    bam: 'baz',
+    localApi: {
+      foo: () => Promise.resolve('bar'),
+      bam: 'baz',
+    }
   })
 
-  const client = capnode.connect(server)
-
-  client.on('remote', async (remote) => {
-
+  const client = capnode.create({ remoteStream: server.stream })
+  client.requestRemoteApi()
+  .then(async (remote) => {
+    console.log('remote!', remote)
     t.equal(remote.bam, 'baz', 'remote returned concrete value.')
     const result = await remote.foo()
     t.equal(result, 'bar', 'remote returned correctly.')
     t.end()
   })
 
-  client.pipe(server).pipe(client)
+  client.exposeLocalApi(server.stream)
 })
+
+/*
 
 test('a method in an object', (t) => {
 

@@ -19,6 +19,7 @@
   "dependencies": {
     "dnode": "^1.2.2",
     "duplex": "^1.0.0",
+    "mux-demux": "^3.7.9",
     "promise-to-callback": "^1.0.0"
   }
 }
