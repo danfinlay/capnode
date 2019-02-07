@@ -66,6 +66,13 @@ function createMethodRegistry (obj) {
   const data = {}
   const pointers = {}
 
+  populateRegistryBranch(obj, data, pointers)
+
+  return { data, pointers }
+}
+
+
+function populateRegistryBranch(obj, data, pointers) {
   Object.keys(obj).forEach((key) => {
     switch (typeof obj[key]) {
       case 'function':
@@ -79,6 +86,15 @@ function createMethodRegistry (obj) {
           methodId,
         }
         break
+
+      case 'object':
+        data[key] = {
+          type: 'object',
+          value: {},
+        }
+        populateRegistryBranch(obj[key], data[key].value, pointers)
+        break
+
       default:
         data[key] = {
           type: typeof obj[key],
@@ -86,8 +102,6 @@ function createMethodRegistry (obj) {
         }
     }
   })
-
-  return { data, pointers }
 }
 
 function createClient (serverStream) {
@@ -120,6 +134,12 @@ function constructApiFrom (remote) {
   const methods = remote.data
   const api = {}
 
+  reconstructObjectBranch(api, methods, remote)
+
+  return api
+}
+
+function reconstructObjectBranch (api, methods, remote) {
   Object.keys(methods).forEach((methodName) => {
     switch (methods[methodName].type) {
       case 'function':
@@ -133,13 +153,16 @@ function constructApiFrom (remote) {
           })
         }
         break
+      case 'object':
+        api[methodName] = {}
+        reconstructObjectBranch(api[methodName], methods[methodName].value, remote)
+        break
       default:
         api[methodName] = methods[methodName].value
     }
   })
-
-  return api
 }
+
 
 // TODO: Make actually crypto hard:
 function rand () {

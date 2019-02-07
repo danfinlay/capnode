@@ -21,6 +21,35 @@ test('a basic connection', (t) => {
   client.pipe(server).pipe(client)
 })
 
+test('a method in an object', (t) => {
+
+  const server = capnode.createServer({
+    foo: {
+      bar: () => Promise.resolve('bam'),
+      bizzam: {
+        presto: () => Promise.resolve('huzzah!')
+      },
+    },
+  })
+
+  const client = capnode.createClient(server)
+
+  client.on('remote', async (remote) => {
+
+    t.equal(typeof remote.foo, 'object')
+    t.equal(typeof remote.foo.bar, 'function')
+    const result = await remote.foo.bar()
+    t.equal(result, 'bam')
+    const result2 = await remote.foo.bizzam.presto()
+    t.equal(result2, 'huzzah!')
+    t.end()
+  })
+
+  client.pipe(server).pipe(client)
+})
+
+
+/*
 test('ability to return additional promise-returning functions', (t) => {
   const server = capnode.createServer({
     foo: () => Promise.resolve({
@@ -43,4 +72,4 @@ test('ability to return additional promise-returning functions', (t) => {
 
   client.pipe(server).pipe(client)
 })
-
+*/
