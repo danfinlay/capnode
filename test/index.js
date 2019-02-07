@@ -1,16 +1,39 @@
 const test = require('tape')
+const Crypto = require('../lib/crypto')
 const capnode = require('../')
 
-test('a basic connection', (t) => {
+test('crypto module', async (t) => {
+  const key = {
+    privKey: '0xe1006e28d22d5b3f2248ce42dbc0d06370d2bfee04b7007399210359e0a50687',
+    address: '0x703a84f5c46e3d74cd9839668357cfc38fe8e963',
+  }
+  const crypto = new Crypto(key)
 
-  const server = capnode.create({
+  const message = { foo: 'bar' }
+
+  try {
+    const signed = crypto.sign(message)
+  } catch (e) {
+    t.error(e, 'threw error')
+  }
+
+})
+
+/*
+test('a basic connection', (t) => {
+  const crypto = new Crypto(key.privKey)
+  const server = new capnode({
+    crypto,
     localApi: {
       foo: () => Promise.resolve('bar'),
       bam: 'baz',
     }
   })
 
-  const client = capnode.create({ remoteStream: server.stream })
+  t.end()
+
+  const client = new capnode({ remoteStream: server.stream })
+  console.log('requesting remote api')
   client.requestRemoteApi()
   .then(async (remote) => {
     console.log('remote!', remote)
@@ -22,6 +45,7 @@ test('a basic connection', (t) => {
 
   client.exposeLocalApi(server.stream)
 })
+*/
 
 /*
 
@@ -51,6 +75,7 @@ test('a method in an object', (t) => {
 
   client.pipe(server).pipe(client)
 })
+*/
 
 /*
 test('ability to return additional promise-returning functions', (t) => {

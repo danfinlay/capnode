@@ -1,12 +1,17 @@
-const dnode = require('dnode')
-const duplex = require('duplex')
-const EventEmitter = require('events')
-const nodeify = require('./lib/nodeify')
-const MuxDemux = require('mux-demux')
+/*
+ * @param {Crypto} crypto - An object containing chosen provided cryptography implementations.
+ */
+class Capnode {
+  constructor ({ localApi = {}, localMethodReg = {}, remoteMethodReg = {}, crypto }) {
+    this.localApi = localApi
+    this.localMethodReg = localMethodReg
+    this.remoteMethodReg = remoteMethodReg
+    this.crypto = crypto
+  }
 
-module.exports = {
-  create,
-  connect,
+  handleMessage (message) {
+    const sender = this.crypto.authenticate(message)
+  }
 }
 
 /*
@@ -34,15 +39,6 @@ function create ({ localApi = {}, localMethodReg = {}, remoteMethodReg = {}, rem
   const connections = new WeakMap() // Stream to a map of its remote method ids.
   let remote, remoteApi // Will represent a connection when complete.
 
-  let mx, inbound, outbound
-  multiplex(remoteStream)
-
-  function multiplex (stream) {
-    mx = MuxDemux(stream)
-    inbound = mx.createStream('inbound')
-    outbound = mx.createStream('outbound')
-  }
-
   function exposeLocalApi (newStream) {
     if (!remoteStream) {
       remoteStream = newStream
@@ -51,9 +47,11 @@ function create ({ localApi = {}, localMethodReg = {}, remoteMethodReg = {}, rem
 
     const inboundD = dnode({
       data: initialApi,
-      callMethod: (methodId, serializedParams, cb) => {
+      callMethod: async (methodId, serializedParams, cb) => {
         const method = localMethodReg[methodId]
-        const params = deserializeRemoteData(serializedParams, remoteMethodReg, )
+        const remote = await requestRemoteApi()
+
+        const params = deserializeRemoteData(serializedParams, remoteMethodReg, remote)
 
         method(...params)
         .then((result) => { cb(null, result) })
@@ -61,7 +59,7 @@ function create ({ localApi = {}, localMethodReg = {}, remoteMethodReg = {}, rem
       },
     })
 
-    inbound.pipe(inboundD).pipe(inbound)
+    newStream.pipe(mx).pipe(newStream)
   }
 
   async function requestRemoteApi () {
@@ -185,9 +183,8 @@ function connect (serverStream) {
   return new Client(serverStream)
 }
 
-class Client extends EventEmitter {
+class Client {
   constructor () {
-    super()
   }
 
   pipe(target) {
@@ -210,3 +207,4 @@ function rand () {
   return String(Math.random())
 }
 
+module.exports = Capnode
