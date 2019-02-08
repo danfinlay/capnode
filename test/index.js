@@ -10,6 +10,13 @@ test('crypto module', async (t) => {
   }
   const crypto = new Crypto(key)
 
+  const domain = {
+    name: 'Capnode',
+    version: '1',
+    chainId: 0,
+    verifyingContract: '0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC',
+  }
+
   const message = {
     id: 0, // unique identifier
     action: 'Foo', // Method name/description
@@ -24,7 +31,43 @@ test('crypto module', async (t) => {
   }
 
   try {
-    const signed = await crypto.sign(message)
+    const signed = await crypto.signAction({ message, domain })
+    const verifiedSender = await crypto.authenticate(signed)
+    console.log('is your address ', verifiedSender)
+    t.equal(verifiedSender, key.address, 'Signed and verified a capability action.')
+    t.end()
+  } catch (e) {
+    console.dir(e)
+    t.error(e, 'threw error')
+    t.end()
+  }
+
+})
+
+test('constructing an ocap', async (t) => {
+
+  const key = {
+    privateKey: '0xd8fef4746e001ecca73a2bb04581969b0e7f711b79dffd304c7c23fa6ac4d8a2',
+    address: '0x093ae3d15f8ba8cc9bb7a97d89abdfdf8b4cdbf6',
+  }
+  const crypto = new Crypto(key)
+
+  const domain = {
+    name: 'Capnode',
+    version: '1',
+    chainId: null, // Let's assume a fully off-chain capability.
+    verifyingContract: null,
+  }
+
+  const message = {
+    id: 4567,  // This can be an id to a local method.
+    invoker: '0x0', // The permissioned party.
+    parentCapability: '0x0', // A pointer to a delegating capability.
+    caveats: '', // Currently undefined, but wooowie is this open ended. Jessie validator?
+  }
+
+  try {
+    const signed = await crypto.signAction({ message, domain })
     const verifiedSender = await crypto.authenticate(signed)
     console.log('is your address ', verifiedSender)
     t.equal(verifiedSender, key.address, 'Signed and verified a capability action.')
