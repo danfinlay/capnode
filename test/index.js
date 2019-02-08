@@ -3,25 +3,43 @@ const Crypto = require('../lib/crypto')
 const capnode = require('../')
 
 test('crypto module', async (t) => {
+
   const key = {
-    privKey: '0xe1006e28d22d5b3f2248ce42dbc0d06370d2bfee04b7007399210359e0a50687',
-    address: '0x703a84f5c46e3d74cd9839668357cfc38fe8e963',
+    privateKey: '0xd8fef4746e001ecca73a2bb04581969b0e7f711b79dffd304c7c23fa6ac4d8a2',
+    address: '0x093ae3d15f8ba8cc9bb7a97d89abdfdf8b4cdbf6',
   }
   const crypto = new Crypto(key)
 
-  const message = { foo: 'bar' }
+  const message = {
+    id: 0, // unique identifier
+    action: 'Foo', // Method name/description
+    arguments: '[]', // JSON array for now? Can contain capabilities.
+                     // Should name "JSON with capabilities". JSON-cap?
+    capability: {
+      id: 4567,
+      invoker: '0x0', // The permissioned party.
+      parentCapability: '0x0', // A pointer to a delegating capability.
+      caveats: '', // Currently undefined, but wooowie is this open ended. Jessie validator?
+    },
+  }
 
   try {
-    const signed = crypto.sign(message)
+    const signed = await crypto.sign(message)
+    const verifiedSender = await crypto.authenticate(signed)
+    console.log('is your address ', verifiedSender)
+    t.equal(verifiedSender, key.address, 'Signed and verified a capability action.')
+    t.end()
   } catch (e) {
+    console.dir(e)
     t.error(e, 'threw error')
+    t.end()
   }
 
 })
 
 /*
 test('a basic connection', (t) => {
-  const crypto = new Crypto(key.privKey)
+  const crypto = new Crypto(key.privateKey)
   const server = new capnode({
     crypto,
     localApi: {
