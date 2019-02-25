@@ -6,6 +6,73 @@ Allows serializing objects that contain promise-returning functions into a crypt
 
 Aspires to make decentralized delegation of any computer function as easy as passing around JS Promises, as they were [originally intended](http://www.erights.org/talks/promises/).
 
+## Hypothetical Usage Example
+
+```javascript
+const capnode = require('capnode')
+const signer = require('a-compliant-crypto-lib-with-a-key')(PRIV_KEY)
+
+const api = {
+  getIndex: async () => {
+    return Object.keys(this);
+  },
+  increment: async () => {
+    return counter++;
+  },
+  plugins: {},
+  addPlugin: async (name, code) => {
+    this.plugins[name] = sandbox.eval(code)
+  },
+  getPlugin: async (name) => {
+    return this.plugins[name].getApi()
+  }
+}
+
+async function requestPermissions (requestor, permissions) {
+  return prompt(`Would you like to give ${requestor} these permissions?: ${permissions}`)
+}
+
+const server = capnode.createServer(api, signer, requestPermissions)
+
+// Imagine we are running some `socketHost` to accept requests:
+// The server is able to handle arbitrary messages and enforce permissions:
+socketHost.on('connection', (socket) => {
+  socket.write(server.getIndex())
+
+  socket.on('message', async (message) => {
+    const response = await server.handle(message)
+    socket.write(response)
+  })
+})
+
+// We also regularly serialize the server to disk
+server.subscribe((newState) => {
+  db.write('server', newState)
+})
+```
+
+That kind of server setup allows a remote API to be constructed that treats the `capnode` provided object as practically local:
+
+```javascript
+const capnode = require('capnode')
+const signer = require('a-compliant-crypto-lib-with-a-key')(PRIV_KEY)
+
+// Imagine we have some `socketClient` connected to the host
+const service = await capnode.createClient(socketClient, signer)
+
+console.log(Object.keys(service))
+// > ['getIndex', 'increment', 'plugins', 'addPlugin', 'getPlugin']
+
+run()
+async function run () {
+  await service.addPlugin('greeter', 'async function () { return 'Hello!'  })')
+
+  const greeting = await service.plugins.greeter()
+  console.log(greeting)
+  // "Hello!"
+}
+```
+
 ## Status
 
 Very early, just building up some fundamental functions for now, does not work as a whole system yet.
