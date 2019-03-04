@@ -1,18 +1,76 @@
-/*
- * @param {Crypto} crypto - An object containing chosen provided cryptography implementations.
- */
-class Capnode {
-  constructor ({ localApi = {}, localMethodReg = {}, remoteMethodReg = {}, crypto }) {
-    this.localApi = localApi
-    this.localMethodReg = localMethodReg
-    this.remoteMethodReg = remoteMethodReg
-    this.crypto = crypto
+const cryptoRandomString = require('crypto-random-string');
+
+module.exports = {
+
+  // Primary methods:
+  createClient,
+//  createServer,
+
+  // Exposed for unit testing:
+  serializeWithReg,
+
+}
+
+function createClient (localApi) {
+
+  const localMethods = {}
+  const serializedLocalApi = serialize(localApi)
+
+  return harden({
+    receiveMessage,
+    getSerializedLocalApi,
+  })
+
+  function getSerializedLocalApi () {
+    return localApi
   }
 
-  handleMessage (message) {
-    const sender = this.crypto.authenticate(message)
+  function receiveMessage (message) {
+
   }
+
+  function serialize (obj, res = {}) {
+    const objRes = serializeWithReg(localMethods, obj, res)
+    return JSON.stringify(objRes)
+  }
+
 }
+
+
+function serializeWithReg (localMethods = {}, obj, res = {}) {
+  Object.keys(obj).forEach((key) => {
+    switch (typeof obj[key]) {
+      case 'function':
+        const methodId = cryptoRandomString(20)
+        localMethods[methodId] = async (...arguments) => {
+          // avoid "this capture".
+          return (1, obj[key])(...arguments)
+        }
+        res[key] = {
+          type: 'function',
+          methodId,
+        }
+        break
+
+      case 'object':
+        res[key] = {
+          type: 'object',
+          value: {},
+        }
+
+        res[key].value = serializeWithReg(localMethods, obj[key], res[key].value)
+        break
+
+      default:
+        res[key] = {
+          type: typeof obj[key],
+          value: obj[key],
+        }
+    }
+  })
+  return res
+}
+
 
 /*
  * @class ApiObj
@@ -65,10 +123,8 @@ function create ({ localApi = {}, localMethodReg = {}, remoteMethodReg = {}, rem
   async function requestRemoteApi () {
     const outboundD = dnode()
     outbound.pipe(outboundD).pipe(outbound)
-    console.log('composing dnode with', outbound)
     return new Promise ((res, rej) => {
       outboundD.on('remote', (_remote) => {
-        console.log('remote called!', _remote)
         remote = _remote
         remoteApi = constructApiFrom(remote)
         res(remoteApi)
@@ -141,41 +197,8 @@ function reconstructObjectBranch (api, methods, remote) {
  */
 
 function createMethodRegistry (obj, methodReg) {
-  const res = serializeObjectForRemote(obj, methodReg)
+  const res = serialize(obj, methodReg)
 
-  return res
-}
-
-function serializeObjectForRemote (obj, methodReg, res = {}) {
-  Object.keys(obj).forEach((key) => {
-    switch (typeof obj[key]) {
-      case 'function':
-        const methodId = rand()
-        methodReg[methodId] = async (...arguments) => {
-          // avoid "this capture".
-          return (1, obj[key])(...arguments)
-        }
-        res[key] = {
-          type: 'function',
-          methodId,
-        }
-        break
-
-      case 'object':
-        res[key] = {
-          type: 'object',
-          value: {},
-        }
-        res[key].value = serializeObjectForRemote(obj[key], methodReg)
-        break
-
-      default:
-        res[key] = {
-          type: typeof obj[key],
-          value: obj[key],
-        }
-    }
-  })
   return res
 }
 
@@ -207,4 +230,3 @@ function rand () {
   return String(Math.random())
 }
 
-module.exports = Capnode

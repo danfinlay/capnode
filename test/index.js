@@ -1,98 +1,47 @@
 const test = require('tape')
-const Crypto = require('../lib/crypto')
 const capnode = require('../')
 
-const typedDataAction = require('../lib/types/action')
-const typedDataCapability = require('../lib/types/capability')
-const types = {
-  action: typedDataAction,
-  capability: typedDataCapability,
-}
-
-test('constructing an action', async (t) => {
-
-  const key = {
-    privateKey: '0xd8fef4746e001ecca73a2bb04581969b0e7f711b79dffd304c7c23fa6ac4d8a2',
-    address: '0x093ae3d15f8ba8cc9bb7a97d89abdfdf8b4cdbf6',
-  }
-  const crypto = new Crypto(key, types)
-
-  const domain = {
-    name: 'Capnode',
-    version: '1',
-    chainId: 0,
-    verifyingContract: '0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC',
+test('serializing an object', (t) => {
+  const reg = {}
+  const object = {
+    foo: 'bar',
+    baz: async () => 'win',
+    inner: {
+      light: async () => 'haha',
+    }
   }
 
-  const message = {
-    id: 0, // unique identifier
-    action: 'Foo', // Method name/description
-    arguments: '[]', // JSON array for now? Can contain capabilities.
-                     // Should name "JSON with capabilities". JSON-cap?
-    capability: {
-      id: 4567,
-      invoker: '0x0', // The permissioned party.
-      parentCapability: '0x0', // A pointer to a delegating capability.
-      caveats: '', // Currently undefined, but wooowie is this open ended. Jessie validator?
-    },
-  }
+  const result = capnode.serializeWithReg(reg, object)
 
-  try {
-    const signed = await crypto.sign(message)
-    const verifiedSender = await crypto.authenticate(signed)
-    t.equal(verifiedSender, key.address, 'Signed and authenticated a signTypedData_v3 action.')
-    t.end()
-  } catch (e) {
-    t.error(e, 'threw error')
-    t.end()
-  }
+  t.equal(typeof result, 'object', 'serialized to object')
 
+  t.ok('foo' in result, 'foo is in object')
+  t.ok('baz' in result, 'baz is in object')
+  t.ok('inner' in result, 'inner is in result')
+
+  t.equal(result.foo.value, object.foo, 'primitive is recorded')
+  t.equal(result.foo.type, 'string', 'primitive type is recorded')
+
+  t.equal(typeof result.baz, 'object', 'func is now obj')
+  t.equal(result.baz.type, 'function', 'recorded func type')
+  t.ok(result.baz.methodId, 'recorded func id')
+  t.ok(result.baz.methodId in reg, 'func is registered')
+
+  t.equal(result.inner.value.light.type, 'function', 'recursive function identified')
+  t.equal(typeof reg[result.inner.value.light.methodId], 'function', 'recursively nested func registered')
+
+  t.end()
 })
 
-test('constructing an ocap', async (t) => {
-
-  const key = {
-    privateKey: '0xd8fef4746e001ecca73a2bb04581969b0e7f711b79dffd304c7c23fa6ac4d8a2',
-    address: '0x093ae3d15f8ba8cc9bb7a97d89abdfdf8b4cdbf6',
-  }
-  const crypto = new Crypto(key, types)
-
-  const domain = {
-    name: 'Capnode',
-    version: '1',
-    chainId: null, // Let's assume a fully off-chain capability.
-    verifyingContract: null,
-  }
-
-  const message = {
-    id: 1,  // This can be an id to a local method.
-    invoker: '0x0', // The permissioned party.
-    parentCapability: '0x0', // A pointer to a delegating capability.
-    caveats: '', // Currently undefined, but wooowie is this open ended. Jessie validator?
-  }
-
-  try {
-    const signed = await crypto.sign(message)
-    const verifiedSender = await crypto.authenticate(signed)
-    t.equal(verifiedSender, key.address, 'Signed and authenticated a signTypedData_v3 capability.')
-    t.end()
-  } catch (e) {
-    t.error(e, 'threw error')
-    t.end()
-  }
-
-})
 
 /*
 test('a basic connection', (t) => {
-  const crypto = new Crypto(key.privateKey)
-  const server = new capnode({
-    crypto,
-    localApi: {
-      foo: () => Promise.resolve('bar'),
-      bam: 'baz',
-    }
+  const cap = new capnode({
+    foo: () => Promise.resolve('bar'),
+    bam: 'baz',
   })
+
+  const
 
   t.end()
 

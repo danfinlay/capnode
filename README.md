@@ -6,6 +6,11 @@ Allows serializing objects that contain promise-returning functions into a crypt
 
 Aspires to make decentralized delegation of any computer function as easy as passing around JS Promises, as they were [originally intended](http://www.erights.org/talks/promises/).
 
+## Features different from Dnode:
+
+- Ability to pass functions as arguments.
+- Ability to receive objects with functions as arguments and return values.
+
 ## Hypothetical Usage Example
 
 ```javascript
@@ -13,20 +18,31 @@ const capnode = require('capnode')
 const signer = require('a-compliant-crypto-lib-with-a-key')(PRIV_KEY)
 
 const api = {
-  getIndex: async () => {
-    return Object.keys(this);
+  public: {
+    getIndex: async () => {
+      // Maybe build in TypeScript data on the methods!
+      return Object.keys(this);
+    },
   },
-  increment: async () => {
-    return counter++;
+  private: {
+    increment: async () => {
+      return counter++;
+    },
+    plugins: {
+      counterfactual: {
+        account:  { foo: noop },
+     },
+    addPlugin: async (name, code) => {
+      this.plugins[name] = sandbox.eval(code)
+    },
+    getPlugin: async (name) => {
+      return this.plugins[name].getApi()
+    },
   },
-  plugins: {},
-  addPlugin: async (name, code) => {
-    this.plugins[name] = sandbox.eval(code)
-  },
-  getPlugin: async (name) => {
-    return this.plugins[name].getApi()
-  }
 }
+
+// pseudocode
+server.requestPermission({ version: '1.01', permission: 'plugins/counterfactual/account'} )
 
 async function requestPermissions (requestor, permissions) {
   return prompt(`Would you like to give ${requestor} these permissions?: ${permissions}`)
