@@ -7,7 +7,7 @@ test('serializing an object', (t) => {
     foo: 'bar',
     baz: async () => 'win',
     inner: {
-      light: async () => 'haha',
+      light: () => 'haha',
     }
   }
 
@@ -23,15 +23,56 @@ test('serializing an object', (t) => {
   t.equal(result.foo.type, 'string', 'primitive type is recorded')
 
   t.equal(typeof result.baz, 'object', 'func is now obj')
-  t.equal(result.baz.type, 'function', 'recorded func type')
+  t.equal(result.baz.type, 'AsyncFunction', 'recorded func type')
   t.ok(result.baz.methodId, 'recorded func id')
   t.ok(result.baz.methodId in reg, 'func is registered')
 
-  t.equal(result.inner.value.light.type, 'function', 'recursive function identified')
+  t.equal(result.inner.value.light.type, 'Function', 'recursive function identified')
   t.equal(typeof reg[result.inner.value.light.methodId], 'function', 'recursively nested func registered')
 
   t.end()
 })
+
+test('deserializing an object', (t) => {
+  const object = {
+    foo: 'bar',
+    baz: async () => 'win',
+    inner: {
+      light: async () => 'haha',
+    }
+  }
+
+  const server = capnode.createServer(object)
+
+  const serializedApi = server.getSerializedLocalApi()
+
+  const client = capnode.createClient(serializedApi, (message) => {
+    // Called when a function is called.
+    server.receiveMessage(message)
+    t.end()
+  })
+
+  const deserialized = client.getDeserializedRemoteApi()
+
+  compareRecursively(object, deserialized)
+
+  function compareRecursively (object, deserialized) {
+    Object.keys(object).forEach((key) => {
+      switch (typeof key) {
+        case 'object':
+          compareRecursively(object[key], deserialized[key])
+          break
+        default:
+          t.ok(key in deserialized, `The key ${key} exists in the reconstructed object.`)
+          t.equal(typeof deserialized[key], typeof object[key], 'equivalent types for ' + key)
+      }
+    })
+  }
+
+  t.end()
+
+})
+
 
 
 /*

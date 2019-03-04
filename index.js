@@ -1,37 +1,103 @@
 const cryptoRandomString = require('crypto-random-string');
+const k_BYTES_OF_ENTROPY = 20
+const clone = require('clone-deep')
 
 module.exports = {
 
   // Primary methods:
   createClient,
-//  createServer,
+  createServer,
 
   // Exposed for unit testing:
   serializeWithReg,
 
 }
 
-function createClient (localApi) {
+function createServer (localApi) {
+  const capnode = createCapnode()
+  capnode.serializeLocalApi(localApi)
+  return capnode
+}
 
+function createClient (remoteApi, sendMessage) {
+  const capnode = createCapnode()
+  capnode.deserializeRemoteApi(remoteApi)
+  capnode.addMessageListener(sendMessage)
+  return capnode
+}
+
+function createCapnode () {
   const localMethods = {}
-  const serializedLocalApi = serialize(localApi)
+  const remoteMethods = {}
+  const promiseResolvers = new Map()
 
-  return harden({
+  let localApi = {}
+  let remoteApi = {}
+
+  const listeners = new Set()
+
+  return {
+    serialize,
+    deserialize,
     receiveMessage,
+    serializeLocalApi,
+    deserializeRemoteApi,
     getSerializedLocalApi,
-  })
+    getDeserializedRemoteApi,
+    addMessageListener,
+    removeMessageListener,
+  }
 
   function getSerializedLocalApi () {
     return localApi
   }
 
-  function receiveMessage (message) {
+  function getDeserializedRemoteApi () {
+    return remoteApi
+  }
 
+  function receiveMessage (serialized) {
+    const message = deserialize(serialized)
+    process(message)
+  }
+
+  function process (message) {
+    throw new Error('must implement process method')
+  }
+
+  function addMessageListener (func) {
+    if (func && typeof func === 'function') {
+      listeners.add(func)
+    }
+  }
+
+  function removeMessageListener (func) {
+    listeners.delete(func)
+  }
+
+  function sendMessage (message) {
+    listeners.forEach((listener) => {
+      listener(message)
+    })
+  }
+
+  function serializeLocalApi (obj) {
+    localApi = serialize(obj)
+    return localApi
   }
 
   function serialize (obj, res = {}) {
-    const objRes = serializeWithReg(localMethods, obj, res)
-    return JSON.stringify(objRes)
+    return serializeWithReg(localMethods, obj, res)
+  }
+
+  function deserialize (obj, res = {}) {
+    return deserializeRemoteData(obj, remoteMethods, promiseResolvers, res, sendMessage)
+  }
+
+  function deserializeRemoteApi (serialized) {
+    const deserialized = deserialize(serialized)
+    remoteApi = deserialized
+    return remoteApi
   }
 
 }
@@ -41,16 +107,17 @@ function serializeWithReg (localMethods = {}, obj, res = {}) {
   Object.keys(obj).forEach((key) => {
     switch (typeof obj[key]) {
       case 'function':
-        const methodId = cryptoRandomString(20)
+        const methodId = cryptoRandomString(k_BYTES_OF_ENTROPY)
         localMethods[methodId] = async (...arguments) => {
           // avoid "this capture".
           return (1, obj[key])(...arguments)
         }
         res[key] = {
-          type: 'function',
+          // Distinguish Function from AsyncFunction:
+          type: obj[key].constructor.name,
           methodId,
-        }
-        break
+        };
+        break;
 
       case 'object':
         res[key] = {
@@ -71,162 +138,61 @@ function serializeWithReg (localMethods = {}, obj, res = {}) {
   return res
 }
 
-
-/*
- * @class ApiObj
- *
- * The type of object that can be exposed over a capnode stream.
-*
- * Each key on the `obj` can be either a concrete value (which is exposed directly to the client)
- * or a promise-returning function.
- *
- * These promise returning functions can themselves return `ApiObj` objects, which are themselves
- * mirrored over the stream, and available for calling their methods.
- *
- * All values must be either concrete values or promise-returning functions.
- */
-
-/*
- * The server constructing function.
- *
- * @param {ApiObj} obj - The object to expose as the API over the stream.
- * @returns Stream - A duplex stream allowing client connections.
- */
-function create ({ localApi = {}, localMethodReg = {}, remoteMethodReg = {}, remoteStream = null }) {
-  const initialApi = createMethodRegistry(localApi, localMethodReg)
-  const connections = new WeakMap() // Stream to a map of its remote method ids.
-  let remote, remoteApi // Will represent a connection when complete.
-
-  function exposeLocalApi (newStream) {
-    if (!remoteStream) {
-      remoteStream = newStream
-      multiplex(remoteStream)
-    }
-
-    const inboundD = dnode({
-      data: initialApi,
-      callMethod: async (methodId, serializedParams, cb) => {
-        const method = localMethodReg[methodId]
-        const remote = await requestRemoteApi()
-
-        const params = deserializeRemoteData(serializedParams, remoteMethodReg, remote)
-
-        method(...params)
-        .then((result) => { cb(null, result) })
-        .catch((reason) => { cb(reason) })
-      },
-    })
-
-    newStream.pipe(mx).pipe(newStream)
-  }
-
-  async function requestRemoteApi () {
-    const outboundD = dnode()
-    outbound.pipe(outboundD).pipe(outbound)
-    return new Promise ((res, rej) => {
-      outboundD.on('remote', (_remote) => {
-        remote = _remote
-        remoteApi = constructApiFrom(remote)
-        res(remoteApi)
-      })
-    })
-  }
-
-
-  return {
-    requestRemoteApi,
-    exposeLocalApi,
-    stream: mx,
-  }
+function deserializeRemoteData (data, remoteMethodReg, promiseResolvers, res = {}, sendMessage) {
+  reconstructObjectBranch(data, remoteMethodReg, promiseResolvers, res, sendMessage)
+  return res
 }
 
-function deserializeRemoteData (data, remoteMethodReg, remote) {
-  const methods = remote.data
-  const api = {}
-
-  reconstructObjectBranch(api, methods, remote)
-
-  return api
-}
-
-function reconstructObjectBranch (api, methods, remote) {
-  Object.keys(methods).forEach((methodName) => {
-    switch (methods[methodName].type) {
-      case 'function':
-        api[methodName] = (...arguments) => {
+function reconstructObjectBranch (api, remoteMethodReg, promiseResolvers, res = {}, sendMessage = noop) {
+  Object.keys(api).forEach((methodName) => {
+    switch (api[methodName].type) {
+      case 'AsyncFunction':
+        res[methodName] = (...arguments) => {
           return new Promise((res, rej) => {
-            const methodId = methods[methodName].methodId
-            remote.callMethod(methodId, [...arguments], (err, ...responses) => {
-              if (err) return rej(err)
-              res(...responses)
+            const methodId = api[methodName].methodId
+            const replyId = rand()
+            const message = {
+              methodId,
+              arguments,
+              replyId,
+            }
+
+            // When processing a message,
+            // This should be referred to and deallocated.
+            promiseResolvers.set(replyId, {
+              res, rej,
             })
+
+            sendMessage(message)
           })
         }
         break
+
+      case 'Function':
+        res[methodName] = (...arguments) => {
+          const methodId = api[methodName].methodId
+          const message = {
+            methodId,
+            arguments,
+          }
+          sendMessage(message)
+        }
+
+        break
+
       case 'object':
-        api[methodName] = {}
-        reconstructObjectBranch(api[methodName], methods[methodName].value, remote)
+        res[methodName] = {}
+        reconstructObjectBranch(api[methodName].value, remoteMethodReg, promiseResolvers, res[methodName], sendMessage)
         break
       default:
-        api[methodName] = methods[methodName].value
+        res[methodName] = api[methodName].value
     }
   })
 }
 
-
-
-/*
- * SAMPLE METHOD REGISTRY
- *
- * {
- *    data: {
- *      foo: {
- *        type: 'function',
- *        methodId: UNIQUE_ID_1,
- *      },
- *      bar: {
- *        type: 'string',
- *        value: 'baz',
- *      }
- *    }
- *    methodReg: {
- *      [UNIQUE_ID_1]: theMethod,
- *    }
- * }
- *
- */
-
-function createMethodRegistry (obj, methodReg) {
-  const res = serialize(obj, methodReg)
-
-  return res
-}
-
-function connect (serverStream) {
-  return new Client(serverStream)
-}
-
-class Client {
-  constructor () {
-  }
-
-  pipe(target) {
-    if (!this.d) {
-      this.d = dnode()
-    }
-
-    this.d.on('remote', (remote) => {
-      this.remote = remote
-      this.api = constructApiFrom(remote)
-      this.emit('remote', this.api)
-    })
-
-    return target.pipe(this.d).pipe(target)
-  }
-}
-
-// TODO: Make actually crypto hard:
 function rand () {
   return String(Math.random())
 }
+
+function noop () {}
 
