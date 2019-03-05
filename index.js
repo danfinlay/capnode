@@ -184,6 +184,7 @@ function rand () {
 function noop () {}
 
 function processMessage (message, localMethods, sendMessage, promiseResolvers) {
+  let resolver
 
   switch (message.type) {
 
@@ -221,13 +222,15 @@ function processMessage (message, localMethods, sendMessage, promiseResolvers) {
       break
 
     case 'return':
-      const resolver = promiseResolvers.get(message.methodId)
+      resolver = promiseResolvers.get(message.methodId)
       const { res } = resolver
       return res(message.value)
       break
 
     case 'error':
-      throw new Error('need to implement error handler')
+      resolver = promiseResolvers.get(message.methodId)
+      const { rej } = resolver
+      return rej(message.value)
       break
 
     default:
