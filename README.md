@@ -1,103 +1,159 @@
 # CapNode
 
-Sharing capabillities as easy as passing around JS Promises.
-
-Allows serializing objects that contain promise-returning functions into a crypto-hard JSON format whose chain of custody is verified during deserialization.
-
-Aspires to make decentralized delegation of any computer function as easy as passing around JS Promises, as they were [originally intended](http://www.erights.org/talks/promises/).
+Sharing objects and their methods as easy as passing around JS Objects.
 
 ## Features different from Dnode:
 
-- Ability to pass functions as arguments.
-- Ability to receive objects with functions as arguments and return values.
+- All functions are considered async, promise-returning functions.
+- Ability to pass functions in return values as well as in arguments, allowing support for subscriptions and event listeners.
 
-## Hypothetical Usage Example
+## Usage Example
+
+Currently our best examples are in the test folder.
 
 ```javascript
-const capnode = require('capnode')
-const signer = require('a-compliant-crypto-lib-with-a-key')(PRIV_KEY)
+test('reconstructing an api and calling it', async (t) => {
+  const object = {
+    foo: 'bar',
+    baz: async () => 'win',
+    inner: {
+      light: async () => 'haha',
+    }
+  }
 
-const api = {
-  public: {
-    getIndex: async () => {
-      // Maybe build in TypeScript data on the methods!
-      return Object.keys(this);
-    },
-  },
-  private: {
-    increment: async () => {
-      return counter++;
-    },
-    plugins: {
-      counterfactual: {
-        account:  { foo: noop },
-     },
-    addPlugin: async (name, code) => {
-      this.plugins[name] = sandbox.eval(code)
-    },
-    getPlugin: async (name) => {
-      return this.plugins[name].getApi()
-    },
-  },
-}
+  const server = capnode.createServer(object)
 
-// pseudocode
-server.requestPermission({ version: '1.01', permission: 'plugins/counterfactual/account'} )
+  const serializedApi = server.getSerializedLocalApi()
 
-async function requestPermissions (requestor, permissions) {
-  return prompt(`Would you like to give ${requestor} these permissions?: ${permissions}`)
-}
+  const client = capnode.createClient(serializedApi)
 
-const server = capnode.createServer(api, signer, requestPermissions)
+  // Communication should be bidirectional:
+  client.addMessageListener(server.receiveMessage)
+  server.addMessageListener(client.receiveMessage)
 
-// Imagine we are running some `socketHost` to accept requests:
-// The server is able to handle arbitrary messages and enforce permissions:
-socketHost.on('connection', (socket) => {
-  socket.write(server.getIndex())
+  // Reconstructing the API over the comms:
+  const deserialized = client.getDeserializedRemoteApi()
 
-  socket.on('message', async (message) => {
-    const response = await server.handle(message)
-    socket.write(response)
+  compareRecursively(object, deserialized)
+
+  function compareRecursively (object, deserialized) {
+    Object.keys(object).forEach((key) => {
+      switch (typeof key) {
+        case 'object':
+          compareRecursively(object[key], deserialized[key])
+          break
+        default:
+          t.ok(key in deserialized, `The key ${key} exists in the reconstructed object.`)
+          t.equal(typeof deserialized[key], typeof object[key], 'equivalent types for ' + key)
+      }
+    })
+  }
+
+  const result = await deserialized.inner.light()
+  t.equal(result, 'haha')
+  t.end()
+
+})
+
+test('passing a method-having object in response to a method', async (t) => {
+  const object = {
+    foo: 'bar',
+    baz: async () => 'win',
+    inner: {
+      light: async () => {
+        return {
+          ultimate: async () => 'success'
+        }
+      },
+    }
+  }
+
+  const server = capnode.createServer(object)
+
+  const serializedApi = server.getSerializedLocalApi()
+
+  const client = capnode.createClient(serializedApi)
+
+  // Communication should be bidirectional:
+  client.addMessageListener(server.receiveMessage)
+  server.addMessageListener(client.receiveMessage)
+
+  // Reconstructing the API over the comms:
+  const deserialized = client.getDeserializedRemoteApi()
+
+  const boss = await deserialized.inner.light()
+  const result = await boss.ultimate()
+  t.equal(result, 'success')
+  t.end()
+
+})
+
+test('passing a method-having object in response to a method', async (t) => {
+  const object = {
+    subscribe: (listener) => {
+      setTimeout(() => {
+        listener(1)
+        listener(2)
+        listener(3)
+      }, 100)
+    }
+  }
+
+  const server = capnode.createServer(object)
+
+  const serializedApi = server.getSerializedLocalApi()
+
+  const client = capnode.createClient(serializedApi)
+
+  // Communication should be bidirectional:
+  client.addMessageListener(server.receiveMessage)
+  server.addMessageListener(client.receiveMessage)
+
+  // Reconstructing the API over the comms:
+  const deserialized = client.getDeserializedRemoteApi()
+
+  let calls = 0
+  deserialized.subscribe((counter) => {
+    calls++
+
+    switch (calls) {
+      case 1:
+        t.equal(calls, counter, 'called correctly')
+        break
+
+      case 2:
+        t.equal(calls, counter, 'called correctly')
+        break
+
+      case 3:
+        t.equal(calls, counter, 'called correctly')
+        t.end()
+        break
+
+      default:
+        t.ok(false, 'did not call with the right arg')
+    }
   })
+
 })
 
-// We also regularly serialize the server to disk
-server.subscribe((newState) => {
-  db.write('server', newState)
-})
-```
-
-That kind of server setup allows a remote API to be constructed that treats the `capnode` provided object as practically local:
-
-```javascript
-const capnode = require('capnode')
-const signer = require('a-compliant-crypto-lib-with-a-key')(PRIV_KEY)
-
-// Imagine we have some `socketClient` connected to the host
-const service = await capnode.createClient(socketClient, signer)
-
-console.log(Object.keys(service))
-// > ['getIndex', 'increment', 'plugins', 'addPlugin', 'getPlugin']
-
-run()
-async function run () {
-  await service.addPlugin('greeter', 'async function () { return 'Hello!'  })')
-
-  const greeting = await service.plugins.greeter()
-  console.log(greeting)
-  // "Hello!"
-}
 ```
 
 ## Status
 
-Very early, just building up some fundamental functions for now, does not work as a whole system yet.
+Basic proof of concept is now working. Needs more testing.
+
+Also, until [WeakReference](https://ponyfoo.com/articles/weakref) is added to the JavaScript standard, there is no way to detect a remote has no remaining references to a function, meaning there is an incremented reference count every time a function is passed over this transport, and the only way to clean up that memory for now is to reallocate the whole thing.
 
 ## Direction
 
 I tell a bit of the story of how I got here [in this thread on OcapJs](https://ocapjs.org/t/hi-there-brief-introduction/64).
 
-The general serialization format is basically ocap-ld but with ethereum's signTypedData signature methods, intended to make some of these capabilities redeemable on the ethereum blockchain.
+Currently assumes authenticated connections between clients and servers. Eventually I would like to support arbitrary authentication schemes, including chained attenuations like is enabled with [ocap-ld](https://w3c-ccg.github.io/ocap-ld/).
+
+Aspires to make decentralized delegation of any computer function as easy as passing around JS Promises, as they were [originally intended](http://www.erights.org/talks/promises/).
+
+On the `eip-712` branch, the general serialization format is basically ocap-ld but with ethereum's signTypedData signature methods, intended to make some of these capabilities redeemable on the ethereum blockchain.
 
 I was thinking it would be cool to use some of the early semantics from [Mark Miller and Hal Finney](https://ocapjs.org/t/abstracting-crypto-into-builtin-ocap-abstractions/55).
 
@@ -108,14 +164,6 @@ Transport of the messages could be handled externally, which takes this a small 
 
 ## Todo
 
-Currently just serializing/deserializing. Will need to traverse chains of capabilities, not to mention `unseal` actually is tied to some transport details: The capability should encode suggested redemption methods, like a server to hit, and so those redemption methods will need to be tested as well.
-
-The [ocap-ld spec](https://w3c-ccg.github.io/ocap-ld/#actions) suggests the `action` field can be used to direct the consumer how to redeem the capability, and yet it also seems to suggest the `action` field is only populated on invocations, not on capabilities...
-
-Add support for Arrays to `signTypedData`, so we can have chains of caveats.
-
-Define a caveat schema (for now it's just text. I was thinking use some Jessie run in a Realms shim to run it as invocation sanitation code).
-
-Eventually, we are going to need a parser for these written for the ethereum blockchain. It would be great to integrate it into the test suite here, to make sure we're even serializing the data here in an actually useful way.
+The [ocap-ld spec](https://w3c-ccg.github.io/ocap-ld/#actions) suggests the `action` field can be used to direct the consumer how to redeem the capability, which would be cool to add eventually, so a server could be serving on multiple transports.
 
 
