@@ -1,4 +1,4 @@
-# CapNode
+# CapNode [![CircleCI](https://circleci.com/gh/danfinlay/capnode.svg?style=svg)](https://circleci.com/gh/danfinlay/capnode)
 
 Sharing objects and their methods over a JSON transport as easy as passing around the JS Objects themselves.
 
