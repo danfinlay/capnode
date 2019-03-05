@@ -17,6 +17,7 @@
     "tape": "^4.9.2"
   },
   "dependencies": {
-    "clone-deep": "^4.0.1"
+    "clone-deep": "^4.0.1",
+    "crypto-random-string": "^1.0.0"
   }
 }
