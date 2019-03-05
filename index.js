@@ -199,7 +199,7 @@ function processMessage (message, localMethods, sendMessage, promiseResolvers) {
         }
       */
       const method = localMethods[message.methodId]
-      method(...arguments)
+      method(...message.arguments)
       .then((reply) => {
         const response = {
           type: 'return',

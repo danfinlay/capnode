@@ -109,3 +109,54 @@ test('passing a method-having object in response to a method', async (t) => {
 
 })
 
+test('passing a method-having object in response to a method', async (t) => {
+  const object = {
+    subscribe: (listener) => {
+      setTimeout(() => {
+        listener(1)
+        listener(2)
+        listener(3)
+      }, 100)
+    }
+  }
+
+  const server = capnode.createServer(object)
+
+  const serializedApi = server.getSerializedLocalApi()
+
+  const client = capnode.createClient(serializedApi)
+
+  // Communication should be bidirectional:
+  client.addMessageListener(server.receiveMessage)
+  server.addMessageListener(client.receiveMessage)
+
+  // Reconstructing the API over the comms:
+  const deserialized = client.getDeserializedRemoteApi()
+
+  let calls = 0
+  deserialized.subscribe((counter) => {
+    calls++
+
+    switch (calls) {
+      case 1:
+        t.equal(calls, counter, 'called correctly')
+        break
+
+      case 2:
+        t.equal(calls, counter, 'called correctly')
+        break
+
+      case 3:
+        t.equal(calls, counter, 'called correctly')
+        t.end()
+        break
+
+      default:
+        t.ok(false, 'did not call with the right arg')
+    }
+  })
+
+})
+
+
+
