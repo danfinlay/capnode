@@ -23,17 +23,17 @@ test('serializing an object', (t) => {
   t.equal(result.foo.type, 'string', 'primitive type is recorded')
 
   t.equal(typeof result.baz, 'object', 'func is now obj')
-  t.equal(result.baz.type, 'AsyncFunction', 'recorded func type')
+  t.equal(result.baz.type, 'function', 'recorded func type')
   t.ok(result.baz.methodId, 'recorded func id')
   t.ok(result.baz.methodId in reg, 'func is registered')
 
-  t.equal(result.inner.value.light.type, 'Function', 'recursive function identified')
+  t.equal(result.inner.value.light.type, 'function', 'recursive function identified')
   t.equal(typeof reg[result.inner.value.light.methodId], 'function', 'recursively nested func registered')
 
   t.end()
 })
 
-test('deserializing an object', (t) => {
+test('deserializing an object', async (t) => {
   const object = {
     foo: 'bar',
     baz: async () => 'win',
@@ -49,8 +49,9 @@ test('deserializing an object', (t) => {
   const client = capnode.createClient(serializedApi, (message) => {
     // Called when a function is called.
     server.receiveMessage(message)
-    t.end()
   })
+
+  server.addMessageListener((message) => client.receiveMessage(message))
 
   const deserialized = client.getDeserializedRemoteApi()
 
@@ -69,6 +70,8 @@ test('deserializing an object', (t) => {
     })
   }
 
+  const result = await deserialized.inner.light()
+  t.equal(result, 'haha')
   t.end()
 
 })

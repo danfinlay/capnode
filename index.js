@@ -56,9 +56,8 @@ function createCapnode () {
     return remoteApi
   }
 
-  function receiveMessage (serialized) {
-    const message = deserialize(serialized)
-    process(message)
+  function receiveMessage (message) {
+    processMessage(message, localMethods, sendMessage, promiseResolvers)
   }
 
   function process (message) {
@@ -107,14 +106,13 @@ function serializeWithReg (localMethods = {}, obj, res = {}) {
   Object.keys(obj).forEach((key) => {
     switch (typeof obj[key]) {
       case 'function':
-        const methodId = cryptoRandomString(k_BYTES_OF_ENTROPY)
+        const methodId = random()
         localMethods[methodId] = async (...arguments) => {
           // avoid "this capture".
           return (1, obj[key])(...arguments)
         }
         res[key] = {
-          // Distinguish Function from AsyncFunction:
-          type: obj[key].constructor.name,
+          type: 'function',
           methodId,
         };
         break;
@@ -146,38 +144,27 @@ function deserializeRemoteData (data, remoteMethodReg, promiseResolvers, res = {
 function reconstructObjectBranch (api, remoteMethodReg, promiseResolvers, res = {}, sendMessage = noop) {
   Object.keys(api).forEach((methodName) => {
     switch (api[methodName].type) {
-      case 'AsyncFunction':
-        res[methodName] = (...arguments) => {
-          return new Promise((res, rej) => {
-            const methodId = api[methodName].methodId
-            const replyId = rand()
-            const message = {
-              methodId,
-              arguments,
-              replyId,
-            }
+      case 'function':
+        res[methodName] = async (...arguments) => {
+          const methodId = api[methodName].methodId
+          const replyId = random()
+          const message = {
+            type: 'invocation',
+            methodId,
+            arguments,
+            replyId,
+          }
+          sendMessage(message)
 
+          return new Promise((res, rej) => {
             // When processing a message,
             // This should be referred to and deallocated.
             promiseResolvers.set(replyId, {
               res, rej,
             })
 
-            sendMessage(message)
           })
         }
-        break
-
-      case 'Function':
-        res[methodName] = (...arguments) => {
-          const methodId = api[methodName].methodId
-          const message = {
-            methodId,
-            arguments,
-          }
-          sendMessage(message)
-        }
-
         break
 
       case 'object':
@@ -196,3 +183,58 @@ function rand () {
 
 function noop () {}
 
+function processMessage (message, localMethods, sendMessage, promiseResolvers) {
+
+  switch (message.type) {
+
+    case 'invocation':
+
+      /* MESSAGE FORMAT:
+        const message = {
+          type: 'invocation',
+          methodId,
+          arguments,
+          replyId,
+        }
+      */
+      const method = localMethods[message.methodId]
+      method(...arguments)
+      .then((reply) => {
+        const response = {
+          type: 'return',
+          methodId: message.replyId,
+          value: reply,
+        }
+        sendMessage(response)
+      })
+      .catch((reason) => {
+        const response = {
+          type: 'error',
+          methodId: message.replyId,
+          value: {
+            message: reason.message,
+            stack: reason.stack,
+          },
+        }
+        sendMessage(response)
+      })
+      break
+
+    case 'return':
+      const resolver = promiseResolvers.get(message.methodId)
+      const { res } = resolver
+      return res(message.value)
+      break
+
+    case 'error':
+      throw new Error('need to implement error handler')
+      break
+
+    default:
+      throw new Error ('Unknown message type: ' + message.type)
+  }
+}
+
+function random () {
+  return cryptoRandomString(k_BYTES_OF_ENTROPY)
+}
