@@ -1,6 +1,6 @@
 # CapNode
 
-Sharing objects and their methods as easy as passing around JS Objects.
+Sharing objects and their methods over a JSON transport as easy as passing around the JS Objects themselves.
 
 ## Features different from Dnode:
 
