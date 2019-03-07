@@ -25,7 +25,10 @@ test('reconstructing an api and calling it', async (t) => {
 
   const serializedApi = server.getSerializedLocalApi()
 
-  const client = capnode.createClient(serializedApi)
+  // This is just a pure JSON-serializable pojo! Look!
+  const serialized = JSON.parse(JSON.stringify(serializedApi))
+
+  const client = capnode.createClient(serialized)
 
   // Communication should be bidirectional:
   client.addMessageListener(server.receiveMessage)
