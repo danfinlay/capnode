@@ -12,6 +12,9 @@ Sharing objects and their methods over a JSON transport as easy as passing aroun
 Currently our best examples are in the test folder.
 
 ```javascript
+const test = require('tape')
+const capnode = require('capnode')
+
 test('reconstructing an api and calling it', async (t) => {
   const object = {
     foo: 'bar',
