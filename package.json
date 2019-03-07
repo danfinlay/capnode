@@ -19,5 +19,17 @@
   "dependencies": {
     "clone-deep": "^4.0.1",
     "crypto-random-string": "^1.0.0"
-  }
+  },
+  "directories": {
+    "doc": "docs",
+    "test": "test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/danfinlay/capnode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/danfinlay/capnode/issues"
+  },
+  "homepage": "https://github.com/danfinlay/capnode#readme"
 }
