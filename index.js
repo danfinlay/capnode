@@ -1,6 +1,7 @@
 const cryptoRandomString = require('crypto-random-string');
 const k_BYTES_OF_ENTROPY = 20
 const clone = require('clone-deep')
+const DuplexStream = require('readable-stream').Duplex
 
 module.exports = {
 
@@ -34,7 +35,14 @@ function createCapnode () {
   let localApi = {}
   let remoteApi = {}
 
+  // Local event listeners, broadcasting locally called functions
+  // to their remote hosts.
   const listeners = new Set()
+
+  // Export a streaming interface
+  const stream = new Duplex({ objectMode: true })
+  stream._onMessage = (event) => receiveMessage(event.data)
+
 
   return {
     serialize,
@@ -46,6 +54,7 @@ function createCapnode () {
     getDeserializedRemoteApi,
     addMessageListener,
     removeMessageListener,
+    stream,
   }
 
   function getSerializedLocalApi () {
@@ -60,10 +69,6 @@ function createCapnode () {
     processMessage(message, localMethods, sendMessage, promiseResolvers)
   }
 
-  function process (message) {
-    throw new Error('must implement process method')
-  }
-
   function addMessageListener (func) {
     if (func && typeof func === 'function') {
       listeners.add(func)
@@ -75,6 +80,7 @@ function createCapnode () {
   }
 
   function sendMessage (message) {
+    stream.write(message)
     listeners.forEach((listener) => {
       listener(message)
     })

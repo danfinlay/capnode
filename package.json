@@ -1,6 +1,6 @@
 {
   "name": "capnode",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "A JS promise-based capabilities system over any stream.",
   "main": "index.js",
   "scripts": {
@@ -18,7 +18,8 @@
   },
   "dependencies": {
     "clone-deep": "^4.0.1",
-    "crypto-random-string": "^1.0.0"
+    "crypto-random-string": "^1.0.0",
+    "readable-stream": "^3.2.0"
   },
   "directories": {
     "doc": "docs",
