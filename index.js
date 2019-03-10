@@ -1,7 +1,7 @@
 const cryptoRandomString = require('crypto-random-string');
 const k_BYTES_OF_ENTROPY = 20
 const clone = require('clone-deep')
-const DuplexStream = require('readable-stream').Duplex
+const Duplex = require('readable-stream').Duplex
 
 module.exports = {
 
@@ -42,7 +42,21 @@ function createCapnode () {
   // Export a streaming interface
   const stream = new Duplex({ objectMode: true })
   stream._onMessage = (event) => receiveMessage(event.data)
-
+  stream._write = function (msg, encoding, cb) {
+    try {
+      if (Buffer.isBuffer(msg)) {
+        const data = msg.toJSON()
+        sendMessage(msg)
+      } else {
+        sendMessage(msg)
+      }
+    } catch (err) {
+      // TODO: May be worth cleaning up the module here,
+      // except there could be other listeners.
+      return cb(new Error('Capnode Duplex Stream disconnected.'))
+    }
+    cb()
+  }
 
   return {
     serialize,
