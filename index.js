@@ -1,13 +1,14 @@
 const cryptoRandomString = require('crypto-random-string');
 const k_BYTES_OF_ENTROPY = 20
 const clone = require('clone-deep')
-const Duplex = require('readable-stream').Duplex
+const Duplex = require('stream').Duplex
 
 module.exports = {
 
   // Primary methods:
   createClient,
   createServer,
+  createClientFromStream,
 
   // Exposed for unit testing:
   serializeWithReg,
@@ -27,6 +28,13 @@ function createClient (remoteApi, sendMessage) {
   return capnode
 }
 
+function createClientFromStream ({ stream, localApi = {} }) {
+  const capnode = createCapnode()
+  const local = capnode.createStream()
+  stream.pipe(local).pipe(stream)
+  return capnode
+}
+
 function createCapnode () {
   const localMethods = {}
   const remoteMethods = {}
@@ -38,25 +46,7 @@ function createCapnode () {
   // Local event listeners, broadcasting locally called functions
   // to their remote hosts.
   const listeners = new Set()
-
-  // Export a streaming interface
-  const stream = new Duplex({ objectMode: true })
-  stream._onMessage = (event) => receiveMessage(event.data)
-  stream._write = function (msg, encoding, cb) {
-    try {
-      if (Buffer.isBuffer(msg)) {
-        const data = msg.toJSON()
-        sendMessage(msg)
-      } else {
-        sendMessage(msg)
-      }
-    } catch (err) {
-      // TODO: May be worth cleaning up the module here,
-      // except there could be other listeners.
-      return cb(new Error('Capnode Duplex Stream disconnected.'))
-    }
-    cb()
-  }
+  const queue = []
 
   return {
     serialize,
@@ -68,7 +58,7 @@ function createCapnode () {
     getDeserializedRemoteApi,
     addMessageListener,
     removeMessageListener,
-    stream,
+    queue,
   }
 
   function getSerializedLocalApi () {
@@ -77,6 +67,29 @@ function createCapnode () {
 
   function getDeserializedRemoteApi () {
     return remoteApi
+  }
+
+  function createStream () {
+    const stream = new Duplex({
+      objectMode: true,
+      write: (chunk, encoding, cb) => {
+        try {
+          capnode.receiveMessage(chunk)
+        } catch (err) {
+          return cb(err)
+        }
+        cb()
+      },
+      read: (size) => {
+        if (capnode.queue.length > 0) {
+          let next = capnode.queue.shift()
+          while (stream.push(next)) {
+            next = capnode.queue.shift()
+          }
+        }
+      }
+    })
+    return stream
   }
 
   function receiveMessage (message) {
@@ -94,7 +107,7 @@ function createCapnode () {
   }
 
   function sendMessage (message) {
-    stream.write(message)
+    queue.push(message)
     listeners.forEach((listener) => {
       listener(message)
     })
