@@ -56,7 +56,7 @@ test('reconstructing an api and calling it', async (t) => {
   server.addMessageListener(client.receiveMessage)
 
   // Reconstructing the API over the comms:
-  const deserialized = client.getDeserializedRemoteApi()
+  const deserialized = await client.getDeserializedRemoteApi()
 
   compareRecursively(object, deserialized)
 
@@ -103,7 +103,7 @@ test('passing a method-having object in response to a method', async (t) => {
   server.addMessageListener(client.receiveMessage)
 
   // Reconstructing the API over the comms:
-  const deserialized = client.getDeserializedRemoteApi()
+  const deserialized = await client.getDeserializedRemoteApi()
 
   const boss = await deserialized.inner.light()
   const result = await boss.ultimate()
@@ -134,7 +134,7 @@ test('passing a method-having object in response to a method', async (t) => {
   server.addMessageListener(client.receiveMessage)
 
   // Reconstructing the API over the comms:
-  const deserialized = client.getDeserializedRemoteApi()
+  const deserialized = await client.getDeserializedRemoteApi()
 
   let calls = 0
   deserialized.subscribe((counter) => {
@@ -161,5 +161,4 @@ test('passing a method-having object in response to a method', async (t) => {
 
 })
 
-
-
+require('./streams')

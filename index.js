@@ -8,6 +8,7 @@ module.exports = {
   // Primary methods:
   createClient,
   createServer,
+  createStreamingServer,
   createClientFromStream,
 
   // Exposed for unit testing:
@@ -28,11 +29,28 @@ function createClient (remoteApi, sendMessage) {
   return capnode
 }
 
-function createClientFromStream ({ stream, localApi = {} }) {
-  const capnode = createCapnode()
+function createStreamingServer(localApi) {
+  const capnode = createServer(localApi)
   const local = capnode.createStream()
-  stream.pipe(local).pipe(stream)
+  const serializedApi = capnode.getSerializedLocalApi()
+  capnode.stream = local
+  local.push({ type: 'init', value: serializedApi })
   return capnode
+}
+
+function createClientFromStream (stream) {
+  const capnode = createCapnode()
+
+  // Wait for remote interface to be available:
+  return new Promise((res, rej) => {
+    try {
+      const local = capnode.createStream(() => res(capnode))
+      capnode.stream = local
+      stream.pipe(local).pipe(stream)
+    } catch (err) {
+      rej(err)
+    }
+  })
 }
 
 function createCapnode () {
@@ -59,29 +77,33 @@ function createCapnode () {
     addMessageListener,
     removeMessageListener,
     queue,
+    createStream,
   }
 
   function getSerializedLocalApi () {
     return localApi
   }
 
-  function getDeserializedRemoteApi () {
+  async function getDeserializedRemoteApi () {
     return remoteApi
   }
 
-  function createStream () {
+  function createStream (setup) {
     const stream = new Duplex({
       objectMode: true,
       write: (chunk, encoding, cb) => {
         try {
-          capnode.receiveMessage(chunk)
+          receiveMessage(chunk)
+          if (chunk.type === 'init') {
+            setup(chunk)
+          }
         } catch (err) {
           return cb(err)
         }
         cb()
       },
       read: (size) => {
-        if (capnode.queue.length > 0) {
+        if (queue.length > 0) {
           let next = capnode.queue.shift()
           while (stream.push(next)) {
             next = capnode.queue.shift()
@@ -89,11 +111,12 @@ function createCapnode () {
         }
       }
     })
+
     return stream
   }
 
   function receiveMessage (message) {
-    processMessage(message, localMethods, sendMessage, promiseResolvers)
+    processMessage(message, localMethods, sendMessage, promiseResolvers, deserializeRemoteApi)
   }
 
   function addMessageListener (func) {
@@ -216,10 +239,15 @@ function rand () {
 
 function noop () {}
 
-function processMessage (message, localMethods, sendMessage, promiseResolvers) {
+function processMessage (message, localMethods, sendMessage, promiseResolvers, deserializeRemoteApi) {
   let resolver
 
   switch (message.type) {
+
+    // For initially receiving a remote interface:
+    case 'init':
+      deserializeRemoteApi(message.value)
+      break;
 
     case 'invocation':
 
