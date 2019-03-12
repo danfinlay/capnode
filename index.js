@@ -64,6 +64,8 @@ function createCapnode () {
   // Local event listeners, broadcasting locally called functions
   // to their remote hosts.
   const listeners = new Set()
+  let stream
+  let streamReading = false
   const queue = []
 
   return {
@@ -77,6 +79,7 @@ function createCapnode () {
     addMessageListener,
     removeMessageListener,
     queue,
+    stream,
     createStream,
   }
 
@@ -88,13 +91,17 @@ function createCapnode () {
     return remoteApi
   }
 
+  function setStream (s) {
+    stream = s
+  }
+
   function createStream (setup) {
     const stream = new Duplex({
       objectMode: true,
       write: (chunk, encoding, cb) => {
         try {
           receiveMessage(chunk)
-          if (chunk.type === 'init') {
+          if (setup && chunk.type === 'init') {
             setup(chunk)
           }
         } catch (err) {
@@ -103,15 +110,24 @@ function createCapnode () {
         cb()
       },
       read: (size) => {
+        streamReading = true
+
+        // recipient is ready to have messages pushed.
         if (queue.length > 0) {
-          let next = capnode.queue.shift()
+          let next = queue.shift()
           while (stream.push(next)) {
-            next = capnode.queue.shift()
+            next = queue.shift()
+          }
+
+          if (queue.length > 0) {
+            // Recipient is overloaded, resume queueing:
+            streamReading = false
           }
         }
       }
     })
 
+    setStream(stream)
     return stream
   }
 
@@ -130,7 +146,14 @@ function createCapnode () {
   }
 
   function sendMessage (message) {
-    queue.push(message)
+    if (stream) {
+      if (streamReading) {
+        stream.push(message)
+      } else {
+        queue.push(message)
+      }
+    }
+
     listeners.forEach((listener) => {
       listener(message)
     })

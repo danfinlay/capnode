@@ -34,3 +34,48 @@ test('connecting two instances via streams', async (t) => {
   t.end()
 })
 
+test('streaming: passing a method-having object in response to a method', async (t) => {
+  const object = {
+    subscribe: (listener) => {
+      setTimeout(() => {
+        listener(1)
+        listener(2)
+        listener(3)
+      }, 100)
+    }
+  }
+
+  const server = capnode.createStreamingServer(object)
+  const serverStream = server.stream
+
+  const client = await capnode.createClientFromStream(serverStream)
+
+  // Reconstructing the API over the comms:
+  const deserialized = await client.getDeserializedRemoteApi()
+
+  let calls = 0
+  deserialized.subscribe((counter) => {
+    calls++
+
+    switch (calls) {
+      case 1:
+        t.equal(calls, counter, 'called correctly')
+        break
+
+      case 2:
+        t.equal(calls, counter, 'called correctly')
+        break
+
+      case 3:
+        t.equal(calls, counter, 'called correctly')
+        t.end()
+        break
+
+      default:
+        t.ok(false, 'did not call with the right arg')
+    }
+  })
+
+})
+
+
