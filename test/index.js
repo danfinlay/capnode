@@ -1,6 +1,7 @@
 const test = require('tape')
 const capnode = require('../')
 
+/*
 test('serializing an object', (t) => {
   const reg = {}
   const object = {
@@ -19,6 +20,7 @@ test('serializing an object', (t) => {
   t.ok('baz' in result, 'baz is in object')
   t.ok('inner' in result, 'inner is in result')
 
+  console.dir(result)
   t.equal(result.foo.value, object.foo, 'primitive is recorded')
   t.equal(result.foo.type, 'string', 'primitive type is recorded')
 
@@ -32,10 +34,14 @@ test('serializing an object', (t) => {
 
   t.end()
 })
+*/
 
 test('reconstructing an api and calling it', async (t) => {
   const object = {
     foo: 'bar',
+    test: {
+      nested: 'stuff',
+    },
     baz: async () => 'win',
     inner: {
       light: async () => 'haha',
@@ -115,6 +121,7 @@ test('passing a method-having object in response to a method', async (t) => {
 test('passing a method-having object in response to a method', async (t) => {
   const object = {
     subscribe: (listener) => {
+      console.log('listener received as arg', arguments)
       setTimeout(() => {
         listener(1)
         listener(2)
@@ -138,8 +145,10 @@ test('passing a method-having object in response to a method', async (t) => {
 
   let calls = 0
   deserialized.subscribe((counter) => {
+    console.log('subscribe called with counter', counter)
     calls++
 
+      console.log({ calls, counter })
     switch (calls) {
       case 1:
         t.equal(calls, counter, 'called correctly')
