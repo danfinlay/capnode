@@ -1,6 +1,5 @@
 const cryptoRandomString = require('crypto-random-string');
 const k_BYTES_OF_ENTROPY = 20
-const clone = require('clone-deep')
 const Duplex = require('stream').Duplex
 
 module.exports = {

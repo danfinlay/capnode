@@ -17,9 +17,7 @@
     "tape": "^4.9.2"
   },
   "dependencies": {
-    "clone-deep": "^4.0.1",
     "crypto-random-string": "^1.0.0",
-    "readable-stream": "^3.2.0",
     "stream": "0.0.2"
   },
   "directories": {
