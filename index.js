@@ -18,11 +18,13 @@ module.exports = {
 function createServer (localApi) {
   const capnode = createCapnode()
   capnode.serializeLocalApi(localApi)
+  capnode.nick = 'SERVER'
   return capnode
 }
 
 function createClient (remoteApi, sendMessage) {
   const capnode = createCapnode()
+  capnode.nick = 'CLIENT'
   capnode.deserializeRemoteApi(remoteApi)
   capnode.addMessageListener(sendMessage)
   return capnode
@@ -30,6 +32,7 @@ function createClient (remoteApi, sendMessage) {
 
 function createStreamingServer(localApi) {
   const capnode = createServer(localApi)
+  capnode.nick = 'SERVER'
   const local = capnode.createStream()
   const serializedApi = capnode.getSerializedLocalApi()
   capnode.stream = local
@@ -39,6 +42,7 @@ function createStreamingServer(localApi) {
 
 function createClientFromStream (stream) {
   const capnode = createCapnode()
+  capnode.nick = 'CLIENT'
 
   // Wait for remote interface to be available:
   return new Promise((res, rej) => {
@@ -131,7 +135,7 @@ function createCapnode () {
   }
 
   function receiveMessage (message) {
-    processMessage(message, localMethods, sendMessage, promiseResolvers, deserialize)
+    processMessage(message, localMethods, sendMessage, promiseResolvers, deserializeRemoteApi)
   }
 
   function addMessageListener (func) {
@@ -186,7 +190,6 @@ function serializeWithReg (localMethods = {}, obj, deserialize, res = {}) {
 
     const methodId = random()
     localMethods[methodId] = async (...arguments) => {
-      console.log(`2 calling ${methodId}: with arguments`, arguments)
       const deserializedArgs = arguments.map(deserialize)
       // avoid "this capture".
       return (1, obj)(...arguments)
@@ -203,7 +206,6 @@ function serializeWithReg (localMethods = {}, obj, deserialize, res = {}) {
     return res
 
   } else if (typeof obj === 'object') {
-    console.log('serializing object', obj)
     res.type = 'object'
     res.value = {}
     Object.keys(obj).forEach((key) => {
@@ -211,11 +213,8 @@ function serializeWithReg (localMethods = {}, obj, deserialize, res = {}) {
         case 'function':
           const methodId = random()
           localMethods[methodId] = async (...arguments) => {
-            console.log(`1 calling ${methodId}:${key} with arguments`, arguments)
-            const deserializedArgs = arguments.map(deserialize)
-            console.log('deserialized into', deserializedArgs)
             // avoid "this capture".
-            return (1, obj[key])(...deserializedArgs)
+            return (1, obj[key])(...arguments)
           }
           res.value[key] = {
             type: 'function',
@@ -242,25 +241,20 @@ function serializeWithReg (localMethods = {}, obj, deserialize, res = {}) {
 }
 
 function deserializeRemoteData (data, remoteMethodReg, promiseResolvers, res = {}, sendMessage, serializeObject) {
-  console.log('deserializing data', JSON.stringify(data, null, 2))
   res = reconstructObjectBranch(data, remoteMethodReg, promiseResolvers, res, sendMessage, serializeObject)
-  console.log('into ', res)
   return res
 }
 
 // MAIN DESERIALIZE FUNC
 function reconstructObjectBranch (api, remoteMethodReg, promiseResolvers, res = {}, sendMessage = noop, serializeObject) {
-  console.log('reconstructing', JSON.stringify(api, null, 2))
   switch (api.type) {
     case 'function':
-      console.log('well thats a func')
       res = async (...arguments) => {
         const methodId = api.methodId
         const replyId = random()
         const serializedArguments = arguments.map((arg) => {
           return serializeObject(arg)
         })
-        console.log('invoking with args', serializedArguments)
         const message = {
           type: 'invocation',
           methodId,
@@ -277,7 +271,6 @@ function reconstructObjectBranch (api, remoteMethodReg, promiseResolvers, res = 
           })
         })
       }
-      console.log('reconstructed ', typeof res)
       return res
       break;
 
@@ -288,11 +281,8 @@ function reconstructObjectBranch (api, remoteMethodReg, promiseResolvers, res = 
 
     case 'object':
       Object.keys(api.value).forEach((methodName) => {
-        console.log(`reconstructing object ${methodName} with `, api.value[methodName])
-        console.log('res is currently', res)
         res[methodName] = reconstructObjectBranch(api.value[methodName], remoteMethodReg, promiseResolvers, {}, sendMessage, serializeObject)
       })
-      console.log('iterated all those keys to get ', res)
       return res
       break;
 
@@ -329,9 +319,7 @@ function processMessage (message, localMethods, sendMessage, promiseResolvers, d
         }
       */
       const method = localMethods[message.methodId]
-      console.log('deserializing args', message.arguments)
       const deserializedArgs = message.arguments.map(deserialize)
-      console.log('deserialized args', deserializedArgs)
       method(...deserializedArgs)
       .then((reply) => {
         const response = {

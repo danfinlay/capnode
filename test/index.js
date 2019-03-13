@@ -121,7 +121,6 @@ test('passing a method-having object in response to a method', async (t) => {
 test('passing a method-having object in response to a method', async (t) => {
   const object = {
     subscribe: (listener) => {
-      console.log('listener received as arg', arguments)
       setTimeout(() => {
         listener(1)
         listener(2)
@@ -145,10 +144,8 @@ test('passing a method-having object in response to a method', async (t) => {
 
   let calls = 0
   deserialized.subscribe((counter) => {
-    console.log('subscribe called with counter', counter)
     calls++
 
-      console.log({ calls, counter })
     switch (calls) {
       case 1:
         t.equal(calls, counter, 'called correctly')
