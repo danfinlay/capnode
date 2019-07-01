@@ -1,6 +1,7 @@
+import { Duplex } from "stream";
+import { inherits } from "util";
 const cryptoRandomString = require('crypto-random-string');
 const k_BYTES_OF_ENTROPY = 20
-const Duplex = require('stream').Duplex
 
 module.exports = {
 
@@ -12,17 +13,44 @@ module.exports = {
 
   // Exposed for unit testing:
   serializeWithReg,
-
 }
 
-function createServer (localApi) {
+type IAsyncApiObject = { [key: string]: IAsyncApiValue };
+type IAsyncFunction = (...args: IAsyncApiObject[]) => Promise<IAsyncApiObject>;
+type IPrimitiveValue = string | number;
+type IAsyncApiValue = IAsyncApiObject | IAsyncFunction | IPrimitiveValue;
+
+type ISerializedAsyncApiObject = {
+  type: string;
+  value: IPrimitiveValue | ISerializedAsyncApiObject;
+};
+
+interface ICapnode {
+  nick: string;
+  listeners: Object;
+  serializeLocalApi: (localApi: IAsyncApiObject) => void;
+  deserializeRemoteApi: (localApi: IAsyncApiObject) => void;
+  addListener: (listener: Function) => void;
+  serialize: (object:IAsyncApiObject, result?: ISerializedAsyncApiObject) => ISerializedAsyncApiObject;
+  deserialize: (serial: ISerializedAsyncApiObject, result?: IAsyncApiObject) => IAsyncApiObject;
+  receiveMessage: (message: ISerializedAsyncApiObject) => void;
+  getSerializedLocalApi: () => ISerializedAsyncApiObject;
+  getDeserializedRemoteApi: () => IAsyncApiObject;
+  addMessageListener: (listener: Function) => void;
+  removeMessageListener: (listener: Function) => void;
+  queue: Object[];
+  stream: Duplex;
+  createStream: (setupCallback?: Function) => Duplex;
+}
+
+function createServer (localApi: IAsyncApiObject): ICapnode {
   const capnode = createCapnode()
   capnode.serializeLocalApi(localApi)
   capnode.nick = 'SERVER'
   return capnode
 }
 
-function createClient (remoteApi, sendMessage) {
+function createClient (remoteApi: ISerializedAsyncApiObject, sendMessage: Function): ICapnode {
   const capnode = createCapnode()
   capnode.nick = 'CLIENT'
   capnode.deserializeRemoteApi(remoteApi)
@@ -30,7 +58,7 @@ function createClient (remoteApi, sendMessage) {
   return capnode
 }
 
-function createStreamingServer(localApi) {
+function createStreamingServer(localApi: IAsyncApiObject) : ICapnode {
   const capnode = createServer(localApi)
   capnode.nick = 'SERVER'
   const local = capnode.createStream()
@@ -40,7 +68,7 @@ function createStreamingServer(localApi) {
   return capnode
 }
 
-function createClientFromStream (stream) {
+function createClientFromStream (stream: Duplex): Promise<ICapnode> {
   const capnode = createCapnode()
   capnode.nick = 'CLIENT'
 
@@ -56,7 +84,24 @@ function createClientFromStream (stream) {
   })
 }
 
-function createCapnode () {
+class Capnode implements ICapnode {
+
+  private localMethods: Object = {};
+  private remoteMethods: Object = {};
+  private promiseResolvers: Map<string, Function> = new Map();
+  private localApi: Object = {};
+  private remoteApi: Object = {};
+  private listeners: Set<Function> = new Set();
+  private stream: Duplex;
+  private streaming: boolean = false;
+  private queue: Object[] = [];
+
+
+
+
+}
+
+function createCapnode (): ICapnode {
   const localMethods = {}
   const remoteMethods = {}
   const promiseResolvers = new Map()
@@ -67,9 +112,9 @@ function createCapnode () {
   // Local event listeners, broadcasting locally called functions
   // to their remote hosts.
   const listeners = new Set()
-  let stream
-  let streamReading = false
-  const queue = []
+  let stream: Duplex;
+  let streamReading:boolean = false;
+  const queue: Object[] = [];
 
   return {
     serialize,
@@ -94,8 +139,8 @@ function createCapnode () {
     return remoteApi
   }
 
-  function setStream (s) {
-    stream = s
+  function setStream (_stream: Duplex) {
+    stream = _stream;
   }
 
   function createStream (setup) {
