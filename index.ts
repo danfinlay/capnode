@@ -1,7 +1,8 @@
 import { Duplex } from "stream";
-import { inherits } from "util";
-const cryptoRandomString = require('crypto-random-string');
-const k_BYTES_OF_ENTROPY = 20
+import * as encoder from './src/encoders/basic';
+
+const serializeWithReg = encoder.serialize;
+const deserializeRemoteData = encoder.deserialize;
 
 module.exports = {
 
@@ -15,31 +16,42 @@ module.exports = {
   serializeWithReg,
 }
 
-type IAsyncApiObject = { [key: string]: IAsyncApiValue };
-type IAsyncFunction = (...args: IAsyncApiObject[]) => Promise<IAsyncApiObject>;
-type IPrimitiveValue = string | number;
-type IAsyncApiValue = IAsyncApiObject | IAsyncFunction | IPrimitiveValue;
 
-type ISerializedAsyncApiObject = {
+export type IAsyncApiObject = { [key: string]: IAsyncApiValue };
+export type IAsyncFunction = (...args: IAsyncApiObject[]) => Promise<IAsyncApiObject>;
+export type IPrimitiveValue = string | number;
+export type IAsyncApiValue = IAsyncApiObject | IAsyncFunction | IPrimitiveValue;
+
+export type ICapnodeMessage = {
+  type: 'init' | 'invocation' | 'error' | 'return';
+  value: any;
+  arguments?: ISerializedAsyncApiObject[];
+  methodId?: string;
+  replyId?: string;
+};
+export type ISerializedAsyncApiObject = {
   type: string;
   value: IPrimitiveValue | ISerializedAsyncApiObject;
 };
 
-interface ICapnode {
+export type ICapnodeSerializer = Function;
+export type ICapnodeDeserializer = Function;
+
+export interface ICapnode {
   nick: string;
   listeners: Object;
   serializeLocalApi: (localApi: IAsyncApiObject) => void;
-  deserializeRemoteApi: (localApi: IAsyncApiObject) => void;
+  deserializeRemoteApi: (localApi: ISerializedAsyncApiObject) => IAsyncApiObject;
   addListener: (listener: Function) => void;
   serialize: (object:IAsyncApiObject, result?: ISerializedAsyncApiObject) => ISerializedAsyncApiObject;
   deserialize: (serial: ISerializedAsyncApiObject, result?: IAsyncApiObject) => IAsyncApiObject;
-  receiveMessage: (message: ISerializedAsyncApiObject) => void;
-  getSerializedLocalApi: () => ISerializedAsyncApiObject;
-  getDeserializedRemoteApi: () => IAsyncApiObject;
+  receiveMessage: (message: ICapnodeMessage) => void;
+  getSerializedLocalApi: () => ISerializedAsyncApiObject | undefined;
+  getDeserializedRemoteApi: () => Promise<IAsyncApiObject>;
   addMessageListener: (listener: Function) => void;
   removeMessageListener: (listener: Function) => void;
   queue: Object[];
-  stream: Duplex;
+  stream?: Duplex;
   createStream: (setupCallback?: Function) => Duplex;
 }
 
@@ -84,71 +96,117 @@ function createClientFromStream (stream: Duplex): Promise<ICapnode> {
   })
 }
 
-class Capnode implements ICapnode {
-
-  private localMethods: Object = {};
-  private remoteMethods: Object = {};
-  private promiseResolvers: Map<string, Function> = new Map();
-  private localApi: Object = {};
-  private remoteApi: Object = {};
-  private listeners: Set<Function> = new Set();
-  private stream: Duplex;
-  private streaming: boolean = false;
-  private queue: Object[] = [];
-
-
-
-
+function createCapnode() : ICapnode {
+  return new Capnode();
 }
 
-function createCapnode (): ICapnode {
-  const localMethods = {}
-  const remoteMethods = {}
-  const promiseResolvers = new Map()
+type IResolver = {
+  res: Function;
+  rej: Function;
+}
 
-  let localApi = {}
-  let remoteApi = {}
+class Capnode implements ICapnode {
+
+  private localMethods: { [name:string]: IAsyncFunction } = {};
+  private remoteMethods: Object = {};
+  private promiseResolvers: Map<string, IResolver> = new Map();
+  private localApi?: ISerializedAsyncApiObject;
+  private remoteApi: IAsyncApiObject = {};
+  public nick: string = 'UNINITIALIZED';
 
   // Local event listeners, broadcasting locally called functions
   // to their remote hosts.
-  const listeners = new Set()
-  let stream: Duplex;
-  let streamReading:boolean = false;
-  const queue: Object[] = [];
+  private listeners: Set<Function> = new Set();
+  private stream?: Duplex;
+  private streamReading: boolean = false;
+  private queue: Object[] = [];
 
-  return {
-    serialize,
-    deserialize,
-    receiveMessage,
-    serializeLocalApi,
-    deserializeRemoteApi,
-    getSerializedLocalApi,
-    getDeserializedRemoteApi,
-    addMessageListener,
-    removeMessageListener,
-    queue,
-    stream,
-    createStream,
+  getSerializedLocalApi (): ISerializedAsyncApiObject | undefined {
+    return this.localApi;
   }
 
-  function getSerializedLocalApi () {
-    return localApi
+  async getDeserializedRemoteApi () {
+    return this.remoteApi;
   }
 
-  async function getDeserializedRemoteApi () {
-    return remoteApi
+  setStream (_stream: Duplex) {
+    this.stream = _stream;
   }
 
-  function setStream (_stream: Duplex) {
-    stream = _stream;
+  private processMessage (message: ICapnodeMessage) {
+    let resolver
+  
+    switch (message.type) {
+  
+      // For initially receiving a remote interface:
+      case 'init':
+        deserialize(message.value)
+        break;
+  
+      case 'invocation':
+        if (typeof message.methodId === 'undefined') {
+          throw new Error('Invalid message.');
+        }
+        const method:IAsyncFunction = this.localMethods[message.methodId];
+        const deserializedArgs = (message.arguments || []).map(deserialize)
+        method(...deserializedArgs)
+        .then((reply) => {
+          const response: ICapnodeMessage = {
+            type: 'return',
+            methodId: message.replyId,
+            value: reply,
+          }
+          sendMessage(response)
+        })
+        .catch((reason) => {
+          const response: ICapnodeMessage = {
+            type: 'error',
+            methodId: message.replyId,
+            value: {
+              message: reason.message,
+              stack: reason.stack,
+            },
+          }
+          sendMessage(response)
+        })
+        break
+  
+      case 'return':
+        if (typeof message.methodId !== 'string') {
+          throw new Error('Invalid message.');
+        }
+        resolver = this.promiseResolvers.get(message.methodId)
+        if (!resolver) {
+          throw new Error('Method id not found: ' + message.methodId);
+        }
+        const { res } = resolver
+ 
+        return res(message.value)
+        break
+  
+      case 'error':
+        if (typeof message.methodId !== 'string') {
+          throw new Error('Invalid message.');
+        }
+        resolver = this.promiseResolvers.get(message.methodId)
+        if (!resolver) {
+          throw new Error('Method id not found: ' + message.methodId);
+        }
+        const { rej } = resolver
+        return rej(message.value)
+        break
+  
+      default:
+        throw new Error ('Unknown message type: ' + message.type)
+    }
   }
 
-  function createStream (setup) {
+  createStream (setup?: Function): Duplex {
     const stream = new Duplex({
       objectMode: true,
-      write: (chunk, encoding, cb) => {
+      write: (chunk, _encoding, cb) => {
         try {
-          receiveMessage(chunk)
+          this.receiveMessage(chunk)
           if (setup && chunk.type === 'init') {
             setup(chunk)
           }
@@ -157,253 +215,74 @@ function createCapnode (): ICapnode {
         }
         cb()
       },
-      read: (size) => {
-        streamReading = true
+      read: (_size) => {
+        this.streamReading = true;
 
         // recipient is ready to have messages pushed.
-        if (queue.length > 0) {
-          let next = queue.shift()
-          while (stream.push(next)) {
-            next = queue.shift()
+        if (this.queue.length > 0) {
+          let next = this.queue.shift()
+          while (this.stream && this.stream.push(next)) {
+            next = this.queue.shift()
           }
 
-          if (queue.length > 0) {
+          if (this.queue.length > 0) {
             // Recipient is overloaded, resume queueing:
-            streamReading = false
+            this.streamReading = false;
           }
         }
       }
     })
 
-    setStream(stream)
+    this.setStream(stream)
     return stream
   }
 
-  function receiveMessage (message) {
-    processMessage(message, localMethods, sendMessage, promiseResolvers, deserializeRemoteApi)
+  receiveMessage (message: ICapnodeMessage) {
+    this.processMessage(message);
   }
 
-  function addMessageListener (func) {
+  addMessageListener (func:Function ) {
     if (func && typeof func === 'function') {
-      listeners.add(func)
+      this.listeners.add(func)
     }
   }
 
-  function removeMessageListener (func) {
-    listeners.delete(func)
+  removeMessageListener (func: Function) {
+    this.listeners.delete(func)
   }
 
-  function sendMessage (message) {
-    if (stream) {
-      if (streamReading) {
-        stream.push(message)
+  sendMessage (message: ICapnodeMessage) {
+    if (this.stream) {
+      if (this.streamReading) {
+        this.stream.push(message)
       } else {
-        queue.push(message)
+        this.queue.push(message)
       }
     }
 
-    listeners.forEach((listener) => {
-      listener(message)
+    this.listeners.forEach((listener: Function) => {
+      listener(message);
     })
   }
 
-  function serializeLocalApi (obj) {
-    localApi = serialize(obj)
-    return localApi
+  serializeLocalApi (obj: IAsyncApiObject) {
+    this.localApi = this.serialize(obj);
+    return this.localApi;
   }
 
-  function serialize (obj, res = {}) {
-    return serializeWithReg(localMethods, obj, deserialize, res)
+  serialize (obj: IAsyncApiObject, res: Object = {}): ISerializedAsyncApiObject {
+    return serializeWithReg(this.localMethods, obj, this.deserialize, res);
   }
 
-  function deserialize (obj, res = {}) {
-    return deserializeRemoteData(obj, remoteMethods, promiseResolvers, res, sendMessage, serialize)
+  deserialize (obj: ISerializedAsyncApiObject, res: Object = {}) {
+    return deserializeRemoteData(obj, this.remoteMethods, this.promiseResolvers, res, this.sendMessage, this.serialize)
   }
 
-  function deserializeRemoteApi (serialized) {
-    const deserialized = deserialize(serialized)
-    remoteApi = deserialized
-    return remoteApi
+  deserializeRemoteApi (serialized: ISerializedAsyncApiObject): IAsyncApiObject {
+    const deserialized = this.deserialize(serialized);
+    this.remoteApi = deserialized
+    return this.remoteApi;
   }
 
 }
 
-// MAIN SERIALIZE FUNC
-function serializeWithReg (localMethods = {}, obj, deserialize, res = {}) {
-
-  if (typeof obj === 'function') {
-
-    const methodId = random()
-    localMethods[methodId] = async (...arguments) => {
-      const deserializedArgs = arguments.map(deserialize)
-      // avoid "this capture".
-      return (1, obj)(...arguments)
-    }
-    res = {
-      type: 'function',
-      methodId,
-    };
-    return res
-
-  } else if (Array.isArray(obj)) {
-    res.type = 'array'
-    res.value = obj.map(item => serializeWithReg(localMethods, item, deserialize))
-    return res
-
-  } else if (typeof obj === 'object') {
-    res.type = 'object'
-    res.value = {}
-    Object.keys(obj).forEach((key) => {
-      switch (typeof obj[key]) {
-        case 'function':
-          const methodId = random()
-          localMethods[methodId] = async (...arguments) => {
-            // avoid "this capture".
-            return (1, obj[key])(...arguments)
-          }
-          res.value[key] = {
-            type: 'function',
-            methodId,
-          };
-          break;
-
-        case 'object':
-          res.value[key] = serializeWithReg(localMethods, obj[key], deserialize)
-          break
-
-        default:
-          res.value[key] = {
-            type: typeof obj[key],
-            value: obj[key],
-          }
-      }
-    })
-  } else { // Handle primitives by default:
-    res.type = typeof obj
-    res.value = obj
-  }
-  return res
-}
-
-function deserializeRemoteData (data, remoteMethodReg, promiseResolvers, res = {}, sendMessage, serializeObject) {
-  res = reconstructObjectBranch(data, remoteMethodReg, promiseResolvers, res, sendMessage, serializeObject)
-  return res
-}
-
-// MAIN DESERIALIZE FUNC
-function reconstructObjectBranch (api, remoteMethodReg, promiseResolvers, res = {}, sendMessage = noop, serializeObject) {
-  switch (api.type) {
-    case 'function':
-      res = async (...arguments) => {
-        const methodId = api.methodId
-        const replyId = random()
-        const serializedArguments = arguments.map((arg) => {
-          return serializeObject(arg)
-        })
-        const message = {
-          type: 'invocation',
-          methodId,
-          arguments: serializedArguments,
-          replyId,
-        }
-        sendMessage(message)
-
-        return new Promise((resolve, rej) => {
-          // When processing a message,
-          // This should be referred to and deallocated.
-          promiseResolvers.set(replyId, {
-            res: resolve, rej,
-          })
-        })
-      }
-      return res
-      break;
-
-    case 'array':
-      res = api.value.map(item => reconstructObjectBranch(item, remoteMethodReg, promiseResolvers, {}, sendMessage, serializeObject))
-      return res
-      break;
-
-    case 'object':
-      Object.keys(api.value).forEach((methodName) => {
-        res[methodName] = reconstructObjectBranch(api.value[methodName], remoteMethodReg, promiseResolvers, {}, sendMessage, serializeObject)
-      })
-      return res
-      break;
-
-    default:
-      res = api.value
-      return res
-  }
-}
-
-function rand () {
-  return String(Math.random())
-}
-
-function noop () {}
-
-function processMessage (message, localMethods, sendMessage, promiseResolvers, deserialize) {
-  let resolver
-
-  switch (message.type) {
-
-    // For initially receiving a remote interface:
-    case 'init':
-      deserialize(message.value)
-      break;
-
-    case 'invocation':
-
-      /* MESSAGE FORMAT:
-        const message = {
-          type: 'invocation',
-          methodId,
-          arguments,
-          replyId,
-        }
-      */
-      const method = localMethods[message.methodId]
-      const deserializedArgs = message.arguments.map(deserialize)
-      method(...deserializedArgs)
-      .then((reply) => {
-        const response = {
-          type: 'return',
-          methodId: message.replyId,
-          value: reply,
-        }
-        sendMessage(response)
-      })
-      .catch((reason) => {
-        const response = {
-          type: 'error',
-          methodId: message.replyId,
-          value: {
-            message: reason.message,
-            stack: reason.stack,
-          },
-        }
-        sendMessage(response)
-      })
-      break
-
-    case 'return':
-      resolver = promiseResolvers.get(message.methodId)
-      const { res } = resolver
-      return res(message.value)
-      break
-
-    case 'error':
-      resolver = promiseResolvers.get(message.methodId)
-      const { rej } = resolver
-      return rej(message.value)
-      break
-
-    default:
-      throw new Error ('Unknown message type: ' + message.type)
-  }
-}
-
-function random () {
-  return cryptoRandomString(k_BYTES_OF_ENTROPY)
-}
