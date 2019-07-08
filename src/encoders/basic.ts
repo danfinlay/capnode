@@ -6,6 +6,7 @@ import {
   ICapnodeDeserializer,
   ICapnodeMessage,
   ICapnodeSerializer,
+  ISerializedAsyncApiObject,
 } from '../../index';
 
 const cryptoRandomString = require('crypto-random-string');
@@ -76,7 +77,7 @@ export function deserialize(data, remoteMethodReg, promiseResolvers, res = {}, s
 export function reconstructBranch(api, remoteMethodReg, promiseResolvers, res = {}, sendMessage = noop, serializeObject) {
   switch (api.type) {
     case 'function':
-      res = async (...args) => {
+      res = async (...args: ISerializedAsyncApiObject[]) => {
         const methodId = api.methodId
         const replyId = random()
         const serializedArguments = args.map((arg) => {
