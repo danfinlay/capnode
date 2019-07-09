@@ -1,34 +1,27 @@
 import {
-  IAsyncApiObject,
-  IAsyncApiValue,
   IAsyncFunction,
-  ICapnode,
-  ICapnodeDeserializer,
-  ICapnodeMessage,
-  ICapnodeSerializer,
-  ISerializedAsyncApiObject,
-  ICapnodeEncoder,
 } from '../../index';
+const cryptoRandomString = require('crypto-random-string');
+const k_BYTES_OF_ENTROPY = 20
 
-interface IMethodRegistry {
-  api: IAsyncApiObject;
-  serialized: ISerializedAsyncApiObject;
-}
 
-export class MethodRegistry implements IMethodRegistry {
-  public api: IAsyncApiObject;
-  public serialized: ISerializedAsyncApiObject;
-  constructor ({ encoder, api, serialized }: { encoder: ICapnodeEncoder; api?: IAsyncApiObject; serialized?: ISerializedAsyncApiObject; }) {
-    if (!api && !serialized) {
-      throw new Error('Method registry requires either an API or serialized API object to construct.');
+export class MethodRegistry {
+  private methodMap: Map<string, IAsyncFunction> = new Map();
+  private reverseMap: Map<IAsyncFunction, string> = new Map();
+
+  registerFunction (method: IAsyncFunction): string {
+    const oldId = this.reverseMap.get(method);
+    if (oldId && typeof oldId === 'string') {
+      return oldId;
     }
-    if (api) {
-      this.api = api;
-      this.serialized = encoder.encode(api);
-    }
-    if (!api && serialized) {
-      this.api = encoder.decode(serialized);
-    }
+
+    const id = random();
+    this.methodMap.set(id, method);
+    this.reverseMap.set(method, id);
+    return id;
   }
 }
 
+function random () {
+  return cryptoRandomString(k_BYTES_OF_ENTROPY)
+}

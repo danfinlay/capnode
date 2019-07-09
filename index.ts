@@ -1,5 +1,7 @@
+import { MethodRegistry } from "./src/method-registry";
+
 export type IAsyncApiObject = { [key: string]: IAsyncApiValue };
-export type IAsyncFunction = (...args: IAsyncApiObject[]) => Promise<IAsyncApiObject>;
+export type IAsyncFunction = (...args: IAsyncApiObject[]) => Promise<IAsyncApiValue>;
 export type IPrimitiveValue = string | number;
 export type IAsyncApiValue = IAsyncApiObject | IAsyncFunction | IPrimitiveValue;
 
@@ -20,11 +22,36 @@ export type ISerializedAsyncApiObject = {
 export type ICapnodeSerializer = Function;
 export type ICapnodeDeserializer = Function;
 
-export interface ILocalMethodRegistry {
-  remoteApi: IAsyncApiObject;
-  localApi?: ISerializedAsyncApiObject;
-}
-
 export default class Capnode {
+  private registry: MethodRegistry;
+
+  constructor({ registry = new MethodRegistry(), index }: { registry?: MethodRegistry; index?: IAsyncApiObject; }) {
+    this.registry = registry;
+
+    if (index) {
+      this.addLocalIndex(index);
+    }
+  }
+
+  addLocalIndex (index: IAsyncApiValue): void {
+    this.registerAnyFunctions(index);
+  }
+
+  registerAnyFunctions (value: IAsyncApiValue): void {
+    switch (typeof value) {
+      case 'function':
+        this.registerFunction(value);
+        break;
+      case 'object':
+        Object.keys(value).forEach((key:string) => {
+          this.registerAnyFunctions(value[key]);
+        });
+        break;
+    }
+  }
+
+  registerFunction (func: IAsyncFunction) {
+    this.registry.registerFunction(func);
+  }
 
 }

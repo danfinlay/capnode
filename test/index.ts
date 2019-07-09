@@ -3,8 +3,14 @@ import test from 'tape';
 import Capnode from '../index';
 
 console.log('okayy....')
-test('test one', (t: { end: () => void; }) => {
-  const cap = new Capnode();
+test('basic serialization', (t: { end: () => void; }) => {
+  const api = {
+    foo: 'bar',
+    baz: async () => 'bam',
+  }
+  const cap = new Capnode({});
+  cap.addLocalIndex(api);
+
   assert(cap, 'okay!');
   t.end();
 })
