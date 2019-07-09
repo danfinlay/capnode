@@ -20,6 +20,15 @@ export class MethodRegistry {
     this.reverseMap.set(method, id);
     return id;
   }
+
+  getFunction (methodId: string): IAsyncFunction | undefined {
+    return this.methodMap.get(methodId);
+  }
+
+  getId (method: IAsyncFunction): string | undefined { 
+    return this.reverseMap.get(method);
+  }
+
 }
 
 function random () {

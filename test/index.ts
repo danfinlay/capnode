@@ -1,16 +1,17 @@
-const assert = require('assert');
 import test from 'tape';
 import Capnode from '../index';
 
 console.log('okayy....')
-test('basic serialization', (t: { end: () => void; }) => {
+test('basic serialization', (t) => {
   const api = {
     foo: 'bar',
     baz: async () => 'bam',
   }
-  const cap = new Capnode({});
-  cap.addLocalIndex(api);
+  const cap = new Capnode({
+    index: api,
+  });
 
-  assert(cap, 'okay!');
+  console.dir(cap.index)
+  t.ok(cap.index, 'index is present')
   t.end();
 })
