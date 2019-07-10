@@ -6,7 +6,7 @@ export type IAsyncFunction = (...args: IAsyncApiObject[]) => Promise<IAsyncApiVa
 export type IPrimitiveValue = string | number | boolean;
 export type IAsyncApiValue = IAsyncApiObject | IAsyncFunction | IPrimitiveValue;
 
-
+export type ICapnodeMessageSender = (message: ICapnodeMessage) => void;
 
 export type ICapnodeMessage = {
   type: 'init' | 'invocation' | 'error' | 'return';
@@ -22,10 +22,10 @@ export type ISerializedAsyncApiObject = {
 
 interface ICapnodeSerializer {
   serialize: (message: IAsyncApiValue, registry: MethodRegistry) => any;
-  deserialize: (data: any, registry: MethodRegistry) => IAsyncApiValue;
+  deserialize: (data: any, registry: MethodRegistry, sendMessage: ICapnodeMessageSender) => IAsyncApiValue;
 }
 
-export default class Capnode <SerializedFormat> {
+export default class Capnode {
   private registry: MethodRegistry;
   private serializer: ICapnodeSerializer;
   public index: any;
@@ -60,7 +60,9 @@ export default class Capnode <SerializedFormat> {
         break;
       case 'object':
         Object.keys(value).forEach((key:string) => {
-          this.registerAnyFunctions(value[key]);
+          if (key && key in value) {
+            this.registerAnyFunctions(value[key]);
+          }
         });
         break;
     }
@@ -70,8 +72,16 @@ export default class Capnode <SerializedFormat> {
     this.registry.registerFunction(func);
   }
 
-  serialize(value: IAsyncApiValue): SerializedFormat {
+  serialize(value: IAsyncApiValue): any {
     return this.serializer.serialize(value, this.registry);
+  }
+
+  deserialize(value: any, sendMessage: ICapnodeMessageSender): IAsyncApiValue {
+    return this.serializer.deserialize(value, this.registry, sendMessage);
+  }
+
+  processMessage (message: ICapnodeMessage): void {
+    console.dir('processing message', message);
   }
 
 }

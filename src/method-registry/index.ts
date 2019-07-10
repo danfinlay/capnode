@@ -12,6 +12,9 @@ export class MethodRegistry {
   registerFunction (method: IAsyncFunction): string {
     const oldId = this.reverseMap.get(method);
     if (oldId && typeof oldId === 'string') {
+      console.log('old ID identified', oldId);
+      this.methodMap.set(oldId, method);
+      this.reverseMap.set(method, oldId);
       return oldId;
     }
 
