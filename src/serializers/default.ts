@@ -1,12 +1,23 @@
 import {
-  IAsyncApiValue, ICapnodeMessageSender, IAsyncFunction,
+  IAsyncApiValue,
+  IInvocationMessage,
+  ICapnodeMessageSender,
+  IAsyncFunction,
+  ISerializedAsyncApiObject,
+  IAsyncType,
 } from '../../index';
+const cryptoRandomString = require('crypto-random-string');
+const k_BYTES_OF_ENTROPY = 20;
+
+interface IRemoteAsyncMethod extends IAsyncFunction {
+  dealloc?: () => void;
+}
 
 import { MethodRegistry } from '../method-registry';
 
-const ESC_SEQ = '!CAP'
-
 export default class DefaultSerializer {
+  public ESC_SEQ: string = '!EK';
+  public FUNC_PREFIX: string = 'CF:';
 
   serialize (api: IAsyncApiValue, registry: MethodRegistry): any {
     console.log(`ser called with ${api} type of ${typeof api}`)
@@ -18,11 +29,16 @@ export default class DefaultSerializer {
       case 'boolean':
         return api;
       case 'object':
+        if (Array.isArray(api)) {
+          return api.map((item) => this.serialize(item, registry));
+        }
         console.log('serializing object')
         const ret: {[key:string]: any} = {};
         Object.keys(api).forEach((key:string) => {
           console.log('calling serialize on ', key)
-          ret[key] = this.serialize(api[key], registry);
+          if (key && typeof key === 'string') {
+            ret[key] = this.serialize(api[key], registry);
+          }
         })
         console.log('object serialized to ', ret)
         return ret;
@@ -34,13 +50,12 @@ export default class DefaultSerializer {
           console.log('registering method', api);
           methodId = registry.registerFunction(api);
         }
-        return this.escape(`${ESC_SEQ}${methodId}`);
     }
 
     throw new Error('Invalid input');
   }    
 
-  deserialize (data: any, registry: MethodRegistry, sendMessage: ICapnodeMessageSender): IAsyncApiValue {
+  deserialize (data: any, registry: MethodRegistry, sendMessage: ICapnodeMessageSender): any {
     console.log('deserialize called on ', data);
     console.log('which is a ', typeof data)
     switch (typeof data) {
@@ -48,8 +63,8 @@ export default class DefaultSerializer {
         console.log('deserializing a string', data)
         let str = this.unescape(data);
         console.log('unescaped to ', str)
-        if (str.indexOf(ESC_SEQ) === 0) {
-          const methodId = str.substr(ESC_SEQ.length);
+        if (str.indexOf(this.ESC_SEQ) === 0) {
+          const methodId = str.substr(this.ESC_SEQ.length);
           console.log('returning func')
           return this.deserializeFunction(methodId, registry, sendMessage);
         } 
@@ -60,9 +75,18 @@ export default class DefaultSerializer {
       case 'boolean':
         return data;
       case 'object':
+        if (Array.isArray(data)) {
+          let result: IAsyncType[] = [];
+          data.forEach((item: ISerializedAsyncApiObject) => {
+            const newItem: IAsyncType = this.deserialize(item, registry, sendMessage);
+            result.push(newItem);
+          });
+          return result;
+        }
         const ret: {[key:string]: any} = {};
         Object.keys(data).forEach((key:string) => {
-          ret[key] = this.deserialize(data[key], registry, sendMessage);
+          const val: IAsyncApiValue | IAsyncApiValue[] = data[key];
+          ret[key] = this.deserialize(val, registry, sendMessage);
         })
         return ret;
     }
@@ -70,24 +94,37 @@ export default class DefaultSerializer {
     throw new Error('Invalid input');
   }
 
-  deserializeFunction (methodId: string, registry: MethodRegistry, sendMessage: ICapnodeMessageSender): IAsyncFunction {
+  deserializeFunction (methodId: string, registry: MethodRegistry, sendMessage: ICapnodeMessageSender): IRemoteAsyncMethod {
     console.log('method seq identified');
     console.log('registry', registry);
     console.log('method returned', methodId);
-    return async () => {
-      sendMessage({
-        type: 'invocation',
-        value: methodId,
+    let result: IRemoteAsyncMethod = async (...userArgs) => {
+      return new Promise((res, rej) => {
+
+        const replyId = random();
+        const invocation: IInvocationMessage = {
+          type: 'invocation',
+          methodId,
+          replyId,
+          arguments: userArgs.map((arg) => this.serialize(arg, registry)),
+        };
+        registry.registerPromise(replyId, res, rej);
+        sendMessage(invocation);
+
       });
-      return true;
     };
+    result.dealloc = () => {
+      // Deallocation logic goes here.
+    }
+    return result;
   }
 
   escape (str: string): string {
     let res = '';
     for (var i = 0; i < str.length; i++) {
-      if (str.indexOf(ESC_SEQ) === i) {
-        res += ESC_SEQ;
+      if (str.indexOf(this.ESC_SEQ, i) === i
+        || str.indexOf(this.FUNC_PREFIX, i) === i) {
+        res += this.ESC_SEQ;
       }
       res += str[i];
     }
@@ -97,8 +134,8 @@ export default class DefaultSerializer {
   unescape (str: string): string {
     let res = '';
     for (var i = 0; i < str.length; i++) {
-      if (str.indexOf(ESC_SEQ) === i) {
-        i += ESC_SEQ.length - 1;
+      if (str.indexOf(this.ESC_SEQ, i) === i) {
+        i += this.ESC_SEQ.length - 1;
       } else {
         res += str[i];
       }
@@ -106,4 +143,8 @@ export default class DefaultSerializer {
     return res;
   }
 
+}
+
+function random () {
+  return cryptoRandomString(k_BYTES_OF_ENTROPY)
 }

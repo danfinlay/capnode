@@ -14,7 +14,9 @@ test('basic serialization and deserialization', async (t) => {
 
   const cap2 = new Capnode({});
   const remote: any = cap2.deserialize(cap.index, (message) => {
-    cap.processMessage(message);
+    cap.processMessage(message, (outgoing) => {
+      console.log('any reply', outgoing);
+    });
   });
 
   console.dir(remote);

@@ -8,6 +8,7 @@ const k_BYTES_OF_ENTROPY = 20
 export class MethodRegistry {
   private methodMap: Map<string, IAsyncFunction> = new Map();
   private reverseMap: Map<IAsyncFunction, string> = new Map();
+  private pendingPromises: Map<string, { res:Function, rej: Function }> = new Map();
 
   registerFunction (method: IAsyncFunction): string {
     const oldId = this.reverseMap.get(method);
@@ -31,6 +32,12 @@ export class MethodRegistry {
   getId (method: IAsyncFunction): string | undefined { 
     return this.reverseMap.get(method);
   }
+
+  registerPromise(promiseId: string, res: Function, rej: Function) {
+    this.pendingPromises.set(promiseId, { res, rej });
+  }
+
+
 
 }
 

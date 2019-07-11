@@ -17,7 +17,7 @@ test('basic escaping', (t) => {
 test('escape sequence escaping', (t) => {
   const serializer = new DefaultSerializer();
 
-  const input = '!CAPblahblah';
+  const input = serializer.FUNC_PREFIX + 'blahblah';
   const escaped = serializer.escape(input);
   const output = serializer.unescape(escaped);
 
@@ -29,12 +29,15 @@ test('escape sequence escaping', (t) => {
 
 test('weird escape sequence escaping', (t) => {
   const serializer = new DefaultSerializer();
+  const fn = serializer.FUNC_PREFIX;
 
-  const input = '!CAPblahbl!CAPah';
+  const input = `${fn}blahblah${fn}haha`;
   const escaped = serializer.escape(input);
   const output = serializer.unescape(escaped);
 
   t.notEqual(input, escaped);
+
+  console.log({ input, output })
   t.equal(input, output);
 
   t.end();
