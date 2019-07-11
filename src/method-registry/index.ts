@@ -1,14 +1,18 @@
 import {
   IAsyncFunction,
-} from '../../index';
+} from '../@types/index';
 const cryptoRandomString = require('crypto-random-string');
 const k_BYTES_OF_ENTROPY = 20
 
+type IResolver = {
+  res: Function,
+  rej: Function,
+}
 
 export class MethodRegistry {
   private methodMap: Map<string, IAsyncFunction> = new Map();
   private reverseMap: Map<IAsyncFunction, string> = new Map();
-  private pendingPromises: Map<string, { res:Function, rej: Function }> = new Map();
+  private pendingPromises: Map<string, IResolver> = new Map();
 
   registerFunction (method: IAsyncFunction): string {
     const oldId = this.reverseMap.get(method);
@@ -37,7 +41,13 @@ export class MethodRegistry {
     this.pendingPromises.set(promiseId, { res, rej });
   }
 
+  getResolvers(promiseId: string): IResolver | undefined {
+    return this.pendingPromises.get(promiseId);
+  }
 
+  clearResolvers(promiseId: string): void {
+    this.pendingPromises.delete(promiseId);
+  }
 
 }
 

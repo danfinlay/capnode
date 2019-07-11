@@ -5,7 +5,7 @@ import {
   IAsyncFunction,
   ISerializedAsyncApiObject,
   IAsyncType,
-} from '../../index';
+} from '../@types/index.d';
 const cryptoRandomString = require('crypto-random-string');
 const k_BYTES_OF_ENTROPY = 20;
 
@@ -50,9 +50,11 @@ export default class DefaultSerializer {
           console.log('registering method', api);
           methodId = registry.registerFunction(api);
         }
+        return `${this.FUNC_PREFIX}${methodId}`;
     }
 
-    throw new Error('Invalid input');
+    console.log(typeof api)
+    throw new Error('Invalid input: ' + api);
   }    
 
   deserialize (data: any, registry: MethodRegistry, sendMessage: ICapnodeMessageSender): any {
@@ -63,8 +65,8 @@ export default class DefaultSerializer {
         console.log('deserializing a string', data)
         let str = this.unescape(data);
         console.log('unescaped to ', str)
-        if (str.indexOf(this.ESC_SEQ) === 0) {
-          const methodId = str.substr(this.ESC_SEQ.length);
+        if (str.indexOf(this.FUNC_PREFIX) === 0) {
+          const methodId = str.substr(this.FUNC_PREFIX.length);
           console.log('returning func')
           return this.deserializeFunction(methodId, registry, sendMessage);
         } 
@@ -91,7 +93,7 @@ export default class DefaultSerializer {
         return ret;
     }
 
-    throw new Error('Invalid input');
+    throw new Error('Invalid input: ' + data);
   }
 
   deserializeFunction (methodId: string, registry: MethodRegistry, sendMessage: ICapnodeMessageSender): IRemoteAsyncMethod {

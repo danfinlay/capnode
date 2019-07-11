@@ -1,68 +1,61 @@
 import { MethodRegistry } from "./src/method-registry";
 import DefaultSerializer from './src/serializers/default';
+import Remote from './src/remote';
+import { 
+  ICapnodeMessage,
+  ICapnodeSerializer,
+  IAsyncApiObject,
+  IAsyncApiValue,
+  IAsyncFunction,
+  ICapnodeMessageSender,
+  IDeallocMessage,
+  IReturnMessage,
+  IErrorMessage,
+  IIndexMessage,
+  IInvocationMessage,
+  ISerializedAsyncApiObject,
+ } from './src/@types/index.d';
 
-export type IAsyncApiObject = { [key: string]: IAsyncApiValue };
-export type IPrimitiveValue = string | number | boolean;
-export type IAsyncAbstractValue = IAsyncApiObject | IAsyncFunction | IPrimitiveValue;
-export type IAsyncApiValue = IAsyncApiObject | IAsyncFunction | IPrimitiveValue | Array<IAsyncAbstractValue>;
-export type IAsyncFunction = (...args: IAsyncApiValue[]) => Promise<IAsyncApiValue>;
-export type IAsyncType = IAsyncApiValue | IAsyncApiValue[];
-
-export type ICapnodeMessageSender = (message: ICapnodeMessage) => void;
-
-export type ICapnodeMessage = IInvocationMessage | IIndexMessage | IErrorMessage | IReturnMessage | IDeallocMessage;
-
-export type ICapnodeMessageAbstract = {
-  type: 'index' | 'invocation' | 'error' | 'return' | 'dealloc';
-  value?: any;
-  arguments?: ISerializedAsyncApiObject[];
-  methodId?: string;
-  replyId?: string;
-};
-
-export interface IInvocationMessage extends ICapnodeMessageAbstract {
-  type: 'invocation';
-}
-export interface IIndexMessage extends ICapnodeMessageAbstract {
-  type: 'index';
-}
-export interface IErrorMessage extends ICapnodeMessageAbstract {
-  type: 'error';
-}
-export interface IReturnMessage extends ICapnodeMessageAbstract {
-  type: 'return';
-}
-export interface IDeallocMessage extends ICapnodeMessageAbstract {
-  type: 'dealloc';
-}
-
-export type ISerializedAsyncApiObject = string | number | boolean | object | Array<any>;
-
-interface ICapnodeSerializer {
-  serialize: (message: IAsyncApiValue, registry: MethodRegistry) => any;
-  deserialize: (data: any, registry: MethodRegistry, sendMessage: ICapnodeMessageSender) => IAsyncApiValue;
-}
+export { Remote };
 
 export default class Capnode {
   private registry: MethodRegistry;
   private serializer: ICapnodeSerializer;
   public index: any;
+  public nickname?: string;
+  private remotes: Set<Remote> = new Set();
 
   constructor({ 
     registry = new MethodRegistry(),
     index,
     serializer = new DefaultSerializer(),
+    nickname = 'capnode',
   }: {
     registry?: MethodRegistry;
     index?: IAsyncApiObject;
     serializer?: ICapnodeSerializer, 
+    nickname?: string,
   }) {
     this.registry = registry;
     this.serializer = serializer;
+    this.nickname = nickname;
 
     if (index) {
       this.addLocalIndex(index);
     }
+  }
+
+  createRemote(): Remote {
+    const remote = new Remote();
+    remote.addMessageListener((message: ICapnodeMessage) => {
+      this.processMessage(message, remote);
+    });
+    this.remotes.add(remote);
+    return remote;
+  }
+
+  clearRemote(remote: Remote): void {
+    this.remotes.delete(remote);
   }
 
   addLocalIndex (index: IAsyncApiValue): void {
@@ -100,23 +93,23 @@ export default class Capnode {
     return this.serializer.serialize(value, this.registry);
   }
 
-  deserialize(value: any, sendMessage: ICapnodeMessageSender): IAsyncApiValue {
-    return this.serializer.deserialize(value, this.registry, sendMessage);
+  deserialize(value: any, remote: Remote): IAsyncApiValue {
+    return this.serializer.deserialize(value, this.registry, remote.sendMessage);
   }
 
-  processMessage (message: ICapnodeMessage, sendMessage: ICapnodeMessageSender): void {
-    console.dir('processing message', message);
+  processMessage (message: ICapnodeMessage, remote: Remote): void {
+    console.log(`${this.nickname} processing message ${message.type}`);
     switch (message.type) {
       case 'invocation':
-        return this.processInvocation(message, sendMessage);
+        return this.processInvocation(message, remote.sendMessage);
       case 'index':
-        return this.processIndex(message, sendMessage);
+        return this.processIndex(message, remote.sendMessage);
       case 'return':
-        return this.processReturn(message, sendMessage);
+        return this.processReturn(message, remote);
       case 'error':
-        return this.processError(message, sendMessage);
+        return this.processError(message);
       case 'dealloc':
-        return this.processDealloc(message, sendMessage);
+        return this.processDealloc(message, remote.sendMessage);
     }
     throw new Error('Unknown message type.')
   }
@@ -126,14 +119,30 @@ export default class Capnode {
     sendMessage(message);
   }
 
-  processReturn (message: IReturnMessage, sendMessage: ICapnodeMessageSender): void {
-    console.log('returning', message);
-    sendMessage(message);
+  processReturn (message: IReturnMessage, remote: Remote): void {
+    if (!message.methodId || typeof message.methodId !== 'string') {
+      throw new Error('Missing methodId parameter.');
+    }
+    const resolver = this.registry.getResolvers(message.methodId);
+    if (resolver && resolver.res) {
+      resolver.res(this.deserialize(message.value, remote));
+      this.registry.clearResolvers(message.methodId);
+    } else {
+      throw new Error('Unknown method.');
+    }
   }
 
-  processError (message: IErrorMessage, sendMessage: ICapnodeMessageSender): void {
-    console.log('erroring', message);
-    sendMessage(message);
+  processError (message: IErrorMessage): void {
+    if (!message.methodId || typeof message.methodId !== 'string') {
+      throw new Error('Missing methodId parameter.');
+    }
+    const resolver = this.registry.getResolvers(message.methodId);
+    if (resolver && resolver.rej) {
+      resolver.rej(message);
+      this.registry.clearResolvers(message.methodId);
+    } else {
+      throw new Error('Unknown method.');
+    }
   }
 
   processIndex (message: IIndexMessage, sendMessage: ICapnodeMessageSender): void {

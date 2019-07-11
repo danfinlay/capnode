@@ -36,8 +36,6 @@ test('weird escape sequence escaping', (t) => {
   const output = serializer.unescape(escaped);
 
   t.notEqual(input, escaped);
-
-  console.log({ input, output })
   t.equal(input, output);
 
   t.end();
