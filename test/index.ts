@@ -1,6 +1,6 @@
 import test from 'tape';
 import Capnode from '../index';
-import { IAsyncApiObject } from '../src/@types/index';
+import { IAsyncApiObject, ICapnodeMessage } from '../src/@types/index';
 require ('../src/serializers/default.test');
 
 test('basic serialization and deserialization', async (t) => {
@@ -17,12 +17,10 @@ test('basic serialization and deserialization', async (t) => {
   const cap2 = new Capnode({ nickname: 'cap2' });
 
   const remote = cap.createRemote();
-  const remote2 = cap2.createRemote();
 
-  remote.addMessageListener(remote2.sendMessage);
-  remote2.addMessageListener(remote.sendMessage);
-
-  const remoteApi: any = cap2.deserialize(cap.index, remote);
+  const remoteApi: any = cap2.deserialize(cap.index, (message: ICapnodeMessage) => {
+    remote.sendMessage(message);
+  });
 
   console.dir(remoteApi);
   t.ok(remoteApi, 'Remote is constructed.')

@@ -11,7 +11,6 @@ import {
   IDeallocMessage,
   IReturnMessage,
   IErrorMessage,
-  IIndexMessage,
   IInvocationMessage,
   ISerializedAsyncApiObject,
  } from './src/@types/index.d';
@@ -93,8 +92,8 @@ export default class Capnode {
     return this.serializer.serialize(value, this.registry);
   }
 
-  deserialize(value: any, remote: Remote): IAsyncApiValue {
-    return this.serializer.deserialize(value, this.registry, remote.sendMessage);
+  deserialize(value: any, sendMessage: ICapnodeMessageSender): IAsyncApiValue {
+    return this.serializer.deserialize(value, this.registry, sendMessage);
   }
 
   processMessage (message: ICapnodeMessage, remote: Remote): void {
@@ -103,7 +102,7 @@ export default class Capnode {
       case 'invocation':
         return this.processInvocation(message, remote.sendMessage);
       case 'index':
-        return this.processIndex(message, remote.sendMessage);
+        return this.processIndex(remote.sendMessage);
       case 'return':
         return this.processReturn(message, remote);
       case 'error':
@@ -125,7 +124,7 @@ export default class Capnode {
     }
     const resolver = this.registry.getResolvers(message.methodId);
     if (resolver && resolver.res) {
-      resolver.res(this.deserialize(message.value, remote));
+      resolver.res(this.deserialize(message.value, remote.sendMessage.bind(remote)));
       this.registry.clearResolvers(message.methodId);
     } else {
       throw new Error('Unknown method.');
@@ -145,9 +144,8 @@ export default class Capnode {
     }
   }
 
-  processIndex (message: IIndexMessage, sendMessage: ICapnodeMessageSender): void {
-    console.log('processing index req', message);
-    sendMessage(message);
+  processIndex (sendMessage: ICapnodeMessageSender): void {
+    sendMessage(this.index);
   }
 
   processInvocation (message: IInvocationMessage, sendMessage: ICapnodeMessageSender): void {

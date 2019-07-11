@@ -31,7 +31,6 @@ export default class Remote {
   }
 
   processMessage(message: ICapnodeMessage): void {
-    console.log('processing message', message.type)
     for (let listener of this.messageListeners) {
       listener(message);
     }
