@@ -12,6 +12,7 @@ test('basic serialization and deserialization', async (t) => {
   const api: IAsyncApiObject = {
     foo: 'bar',
     baz: async () => 'bam',
+    bork: undefined,
   }
 
   // A capnode is made a server by receiving an API as its index:

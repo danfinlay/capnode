@@ -1,7 +1,7 @@
 import { MethodRegistry } from "../method-registry";
 
 export type IAsyncApiObject = { [key: string]: IAsyncApiValue };
-export type IPrimitiveValue = string | number | boolean;
+export type IPrimitiveValue = string | number | boolean | undefined;
 export type IAsyncAbstractValue = IAsyncApiObject | IAsyncFunction | IPrimitiveValue;
 export type IAsyncApiValue = IAsyncApiObject | IAsyncFunction | IPrimitiveValue | Array<IAsyncAbstractValue>;
 export type IAsyncFunction = (...args: any[]) => Promise<any>;
