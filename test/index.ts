@@ -2,6 +2,7 @@ import test from 'tape';
 import Capnode from '../index';
 import { IAsyncApiObject, IAsyncFunction, IAsyncApiValue, IRemoteFunction } from '../src/@types/index';
 require ('../src/serializers/default.test');
+require('./cyclic-references');
 
 test('basic serialization and deserialization', async (t) => {
 
