@@ -118,7 +118,16 @@ export default class Capnode {
   }
 
   processDealloc (message: IDeallocMessage, sendMessage: ICapnodeMessageSender): void {
-    sendMessage(message);
+    if (!message.methodId || typeof message.methodId !== 'string') {
+      throw new Error('Missing methodId parameter.');
+    }
+
+    this.registry.deallocFunction(message.methodId);
+    const reply: IReturnMessage = {
+      type: 'return',
+      methodId: message.replyId,
+    }
+    sendMessage(reply);
   }
 
   processReturn (message: IReturnMessage, sendMessage: ICapnodeMessageSender): void {
@@ -136,6 +145,7 @@ export default class Capnode {
 
   processError (message: IErrorMessage): void {
     if (!message.methodId || typeof message.methodId !== 'string') {
+
       throw new Error('Missing methodId parameter.');
     }
     const resolver = this.registry.getResolvers(message.methodId);
@@ -160,6 +170,7 @@ export default class Capnode {
   }
 
   processInvocation (message: IInvocationMessage, sendMessage: ICapnodeMessageSender): void {
+    const self = this;
     if (!message.methodId) {
       throw new Error('Invocation requires a methodId');
     }
@@ -177,16 +188,26 @@ export default class Capnode {
       });
     }
 
-    method(...deserializedArgs)
-    .then((reply: IAsyncApiValue) => {
+    const result = method(...deserializedArgs)
+    if (!(result instanceof Promise)) {
+      resolve(result);
+      return;
+    }
+
+    result
+    .then(resolve)
+    .catch(reject);
+
+    function resolve (reply: any) {
       const response: IReturnMessage = {
         type: 'return',
         methodId: message.replyId,
-        value: this.serialize(reply),
+        value: self.serialize(reply),
       };
       sendMessage(response);
-    })
-    .catch((reason: Error) => {
+    }
+
+    function reject (reason: Error) {
       const response: IErrorMessage = {
         type: 'error',
         methodId: message.replyId,
@@ -196,7 +217,8 @@ export default class Capnode {
         },
       };
       sendMessage(response);
-    })
+
+    }
 
   }
 
@@ -213,7 +235,11 @@ export default class Capnode {
       });
     });
   }
-  
+
+  get registeredMethodCount(): number {
+    return this.registry.registeredMethodCount;
+  }
+
 }
 
 function random () {

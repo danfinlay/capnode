@@ -4,7 +4,10 @@ export type IAsyncApiObject = { [key: string]: IAsyncApiValue };
 export type IPrimitiveValue = string | number | boolean;
 export type IAsyncAbstractValue = IAsyncApiObject | IAsyncFunction | IPrimitiveValue;
 export type IAsyncApiValue = IAsyncApiObject | IAsyncFunction | IPrimitiveValue | Array<IAsyncAbstractValue>;
-export type IAsyncFunction = (...args: IAsyncApiValue[]) => Promise<IAsyncApiValue>;
+export type IAsyncFunction = (...args: any[]) => Promise<any>;
+export interface IRemoteFunction extends IAsyncFunction {
+  dealloc: Function;
+}
 export type IAsyncType = IAsyncApiValue | IAsyncApiValue[];
 
 export type ICapnodeMessageSender = (message: ICapnodeMessage) => void;

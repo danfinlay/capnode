@@ -10,9 +10,18 @@ type IResolver = {
 }
 
 export class MethodRegistry {
+  private indexFuncs: Set<IAsyncFunction> = new Set();
   private methodMap: Map<string, IAsyncFunction> = new Map();
   private reverseMap: Map<IAsyncFunction, string> = new Map();
   public pendingPromises: Map<string, IResolver> = new Map();
+
+  protectFunction (method: IAsyncFunction) {
+    this.indexFuncs.add(method);
+  }
+
+  unprotectFunction (method: IAsyncFunction) {
+    this.indexFuncs.delete(method);
+  }
 
   registerFunction (method: IAsyncFunction): string {
     const oldId = this.reverseMap.get(method);
@@ -32,6 +41,18 @@ export class MethodRegistry {
     return this.methodMap.get(methodId);
   }
 
+  deallocFunction (methodId: string): void {
+    const func = this.getFunction(methodId);
+    if (func) {
+      if (this.indexFuncs.has(func)) {
+        // This is a protected func, do nothing.
+        return;
+      }
+      this.methodMap.delete(methodId);
+      this.reverseMap.delete(func);
+    }
+  }
+
   getId (method: IAsyncFunction): string | undefined { 
     return this.reverseMap.get(method);
   }
@@ -46,6 +67,10 @@ export class MethodRegistry {
 
   clearResolvers(promiseId: string): void {
     this.pendingPromises.delete(promiseId);
+  }
+
+  get registeredMethodCount(): number {
+    return this.methodMap.size;
   }
 
 }

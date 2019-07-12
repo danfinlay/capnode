@@ -5,6 +5,7 @@ import {
   IAsyncFunction,
   ISerializedAsyncApiObject,
   IAsyncType,
+  IDeallocMessage,
 } from '../@types/index.d';
 const cryptoRandomString = require('crypto-random-string');
 const k_BYTES_OF_ENTROPY = 20;
@@ -26,6 +27,8 @@ export default class DefaultSerializer {
       case 'number':
         return api;
       case 'boolean':
+        return api;
+      case 'undefined':
         return api;
       case 'object':
         if (Array.isArray(api)) {
@@ -61,6 +64,8 @@ export default class DefaultSerializer {
       case 'number':
         return data;
       case 'boolean':
+        return data;
+      case 'undefined':
         return data;
       case 'object':
         if (Array.isArray(data)) {
@@ -99,7 +104,16 @@ export default class DefaultSerializer {
       });
     };
     result.dealloc = () => {
-      // Deallocation logic goes here.
+      return new Promise((res, rej) => {
+        const deallocId = random();
+        const deallocMessage: IDeallocMessage = {
+          type: 'dealloc',
+          methodId,
+          replyId: deallocId,
+        };
+        registry.registerPromise(deallocId, res, rej);
+        sendMessage(deallocMessage);
+      })
     }
     return result;
   }
