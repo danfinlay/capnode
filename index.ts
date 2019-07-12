@@ -12,8 +12,12 @@ import {
   IReturnMessage,
   IErrorMessage,
   IInvocationMessage,
+  IIndexMessage,
   ISerializedAsyncApiObject,
  } from './src/@types/index.d';
+
+const cryptoRandomString = require('crypto-random-string');
+const k_BYTES_OF_ENTROPY = 20;
 
 export { Remote };
 
@@ -97,37 +101,36 @@ export default class Capnode {
   }
 
   processMessage (message: ICapnodeMessage, remote: Remote): void {
-    console.log(`${this.nickname} processing message ${message.type}`);
+    const emitMessage = remote.emitMessage.bind(remote);
     switch (message.type) {
       case 'invocation':
-        return this.processInvocation(message, remote.sendMessage);
+        return this.processInvocation(message, emitMessage);
       case 'index':
-        return this.processIndex(remote.sendMessage);
+        return this.processIndex(message, emitMessage);
       case 'return':
-        return this.processReturn(message, remote);
+        return this.processReturn(message, emitMessage);
       case 'error':
         return this.processError(message);
       case 'dealloc':
-        return this.processDealloc(message, remote.sendMessage);
+        return this.processDealloc(message, emitMessage);
     }
     throw new Error('Unknown message type.')
   }
 
   processDealloc (message: IDeallocMessage, sendMessage: ICapnodeMessageSender): void {
-    console.log('deallocing', message);
     sendMessage(message);
   }
 
-  processReturn (message: IReturnMessage, remote: Remote): void {
+  processReturn (message: IReturnMessage, sendMessage: ICapnodeMessageSender): void {
     if (!message.methodId || typeof message.methodId !== 'string') {
       throw new Error('Missing methodId parameter.');
     }
     const resolver = this.registry.getResolvers(message.methodId);
     if (resolver && resolver.res) {
-      resolver.res(this.deserialize(message.value, remote.sendMessage.bind(remote)));
+      resolver.res(this.deserialize(message.value, sendMessage)); 
       this.registry.clearResolvers(message.methodId);
     } else {
-      throw new Error('Unknown method.');
+      throw new Error('Unable to find return resolver.');
     }
   }
 
@@ -144,8 +147,16 @@ export default class Capnode {
     }
   }
 
-  processIndex (sendMessage: ICapnodeMessageSender): void {
-    sendMessage(this.index);
+  processIndex (message: IIndexMessage, sendMessage: ICapnodeMessageSender): void {
+    if (!message.methodId || typeof message.methodId !== 'string') {
+      throw new Error('Missing methodId parameter.');
+    }
+
+    sendMessage({
+      type: 'return',
+      methodId: message.methodId,
+      value: this.index,
+    });
   }
 
   processInvocation (message: IInvocationMessage, sendMessage: ICapnodeMessageSender): void {
@@ -189,4 +200,22 @@ export default class Capnode {
 
   }
 
+  requestIndex(remote: Remote): Promise<IAsyncApiObject> {
+    if (!remote) return this.index;
+
+    return new Promise((res, rej) => {
+      const methodId:string = random();
+      this.registry.registerPromise(methodId, res, rej);
+
+      remote.emitMessage({
+        type: 'index',
+        methodId,
+      });
+    });
+  }
+  
+}
+
+function random () {
+  return cryptoRandomString(k_BYTES_OF_ENTROPY)
 }

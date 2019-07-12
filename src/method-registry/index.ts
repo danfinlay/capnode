@@ -12,12 +12,11 @@ type IResolver = {
 export class MethodRegistry {
   private methodMap: Map<string, IAsyncFunction> = new Map();
   private reverseMap: Map<IAsyncFunction, string> = new Map();
-  private pendingPromises: Map<string, IResolver> = new Map();
+  public pendingPromises: Map<string, IResolver> = new Map();
 
   registerFunction (method: IAsyncFunction): string {
     const oldId = this.reverseMap.get(method);
     if (oldId && typeof oldId === 'string') {
-      console.log('old ID identified', oldId);
       this.methodMap.set(oldId, method);
       this.reverseMap.set(method, oldId);
       return oldId;

@@ -9,31 +9,53 @@ import { ICapnodeMessageSender, ICapnodeMessage } from "./@types";
  * 
  */
 export default class Remote {
-  private messageListeners: Set<ICapnodeMessageSender> = new Set();
-  public sendMessage: ICapnodeMessageSender = this.processMessage.bind(this);
+  private localMessageListeners: Set<ICapnodeMessageSender> = new Set();
+  private remoteMessageListeners: Set<ICapnodeMessageSender> = new Set();
 
   constructor(messageHandler?: ICapnodeMessageSender) {
     this.addMessageListener(messageHandler);
   }
 
   /**
-   * 
    * @param sender - A Function that will deliver the message to the local capnode.
    * Called when the Remote is constructed within a capnode.
    */
   addMessageListener (sender?: ICapnodeMessageSender) {
     if (!sender) return;
-    this.messageListeners.add(sender);
+    this.localMessageListeners.add(sender);
   }
 
   removeMessageListener (sender: ICapnodeMessageSender) {
-    this.messageListeners.delete(sender);
+    this.localMessageListeners.delete(sender);
   }
 
-  processMessage(message: ICapnodeMessage): void {
-    for (let listener of this.messageListeners) {
+  /**
+   * @param sender - A Function that will deliver the message to the remote capnode.
+   * Called when the Remote is constructed within a capnode.
+   */
+  addRemoteMessageListener (sender?: ICapnodeMessageSender) {
+    if (!sender) return;
+    this.remoteMessageListeners.add(sender);
+  }
+
+  removeRemoteMessageListener (sender: ICapnodeMessageSender) {
+    this.remoteMessageListeners.delete(sender);
+  }
+
+  informAll(listeners: Set<ICapnodeMessageSender>, message: ICapnodeMessage): void {
+    for (let listener of listeners) {
       listener(message);
     }
   }
+
+  receiveMessage(message: ICapnodeMessage): void {
+    this.informAll(this.localMessageListeners, message);
+  }
+
+  emitMessage(message: ICapnodeMessage): void {
+    this.informAll(this.remoteMessageListeners, message);
+  }
+
+
 
 }

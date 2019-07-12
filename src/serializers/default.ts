@@ -20,7 +20,6 @@ export default class DefaultSerializer {
   public FUNC_PREFIX: string = 'CF:';
 
   serialize (api: IAsyncApiValue, registry: MethodRegistry): any {
-    console.log(`ser called with ${api} type of ${typeof api}`)
     switch (typeof api) {
       case 'string':
         return this.escape(api);
@@ -32,45 +31,32 @@ export default class DefaultSerializer {
         if (Array.isArray(api)) {
           return api.map((item) => this.serialize(item, registry));
         }
-        console.log('serializing object')
         const ret: {[key:string]: any} = {};
         Object.keys(api).forEach((key:string) => {
-          console.log('calling serialize on ', key)
           if (key && typeof key === 'string') {
             ret[key] = this.serialize(api[key], registry);
           }
         })
-        console.log('object serialized to ', ret)
         return ret;
       case 'function':
-        console.log('serializing function')
         let methodId = registry.getId(api);
-        console.log('method id', methodId)
         if (!methodId) {
-          console.log('registering method', api);
           methodId = registry.registerFunction(api);
         }
         return `${this.FUNC_PREFIX}${methodId}`;
     }
 
-    console.log(typeof api)
     throw new Error('Invalid input: ' + api);
   }    
 
   deserialize (data: any, registry: MethodRegistry, sendMessage: ICapnodeMessageSender): any {
-    console.log('deserialize called on ', data);
-    console.log('which is a ', typeof data)
     switch (typeof data) {
       case 'string':
-        console.log('deserializing a string', data)
         let str = this.unescape(data);
-        console.log('unescaped to ', str)
         if (str.indexOf(this.FUNC_PREFIX) === 0) {
           const methodId = str.substr(this.FUNC_PREFIX.length);
-          console.log('returning func')
           return this.deserializeFunction(methodId, registry, sendMessage);
         } 
-        console.log('returning str')
         return str;
       case 'number':
         return data;
@@ -97,9 +83,6 @@ export default class DefaultSerializer {
   }
 
   deserializeFunction (methodId: string, registry: MethodRegistry, sendMessage: ICapnodeMessageSender): IRemoteAsyncMethod {
-    console.log('method seq identified');
-    console.log('registry', registry);
-    console.log('method returned', methodId);
     let result: IRemoteAsyncMethod = async (...userArgs) => {
       return new Promise((res, rej) => {
 
