@@ -14,6 +14,32 @@ interface IRemoteAsyncMethod extends IAsyncFunction {
   dealloc?: () => void;
 }
 
+enum LinkableType {
+  'object',
+  'function',
+  'array',
+}
+
+type ILinkPlaceholder = {
+  type: LinkableType,
+  id: number,
+}
+
+type SerializedFormat = {
+  links: ISerializedAsyncApiObject[],
+  value: ISerializedAsyncApiObject,
+}
+
+type MetaLinkRegistry = {
+  links: Array<IAsyncFunction | Array<any> | object>;
+  serializedLinks: ISerializedAsyncApiObject[];
+}
+
+type DeserializedMetaRegistry = {
+  serializedLinks: ISerializedAsyncApiObject[];
+  reconstructed: Array<any>;
+}
+
 import { MethodRegistry } from '../method-registry';
 
 export default class DefaultSerializer {
@@ -21,6 +47,20 @@ export default class DefaultSerializer {
   public FUNC_PREFIX: string = 'CF:';
 
   serialize (api: IAsyncApiValue, registry: MethodRegistry): any {
+    const meta: MetaLinkRegistry = {
+      serializedLinks: [],
+      links: [],
+    };
+    const result: SerializedFormat = {
+      links: [],
+      value: undefined,
+    }
+    result.value = this.serializeLeaf(api, registry, meta);
+    result.links = meta.serializedLinks;
+    return result;
+  }
+
+  serializeLeaf (api: IAsyncApiValue, registry: MethodRegistry, meta: MetaLinkRegistry): any {
     switch (typeof api) {
       case 'string':
         return this.escape(api);
@@ -31,34 +71,88 @@ export default class DefaultSerializer {
       case 'undefined':
         return api;
       case 'object':
-        if (Array.isArray(api)) {
-          return api.map((item) => this.serialize(item, registry));
-        }
-        const ret: {[key:string]: any} = {};
-        Object.keys(api).forEach((key:string) => {
-          if (key && typeof key === 'string') {
-            ret[key] = this.serialize(api[key], registry);
-          }
-        })
-        return ret;
+        return this.serializeObject(api, registry, meta);
       case 'function':
+
+        if (!meta.links.includes(api)) {
+          meta.links.push(api);
+        }
+  
+        const pointer: ILinkPlaceholder = {
+          type: LinkableType.function,
+          id: meta.links.indexOf(api),
+        }
+  
         let methodId = registry.getId(api);
         if (!methodId) {
           methodId = registry.registerFunction(api);
         }
-        return `${this.FUNC_PREFIX}${methodId}`;
+
+        meta.serializedLinks.push(`${this.FUNC_PREFIX}${methodId}`);
+        return pointer;
     }
 
-    throw new Error('Invalid input: ' + api);
-  }    
+    throw new Error('Invalid input: ' + JSON.stringify(api));
+  } 
+
+  serializeObject(api: IAsyncApiValue, registry: MethodRegistry, meta: MetaLinkRegistry) {
+    if (!api || typeof api !== 'object') {
+      throw new Error('serializeObject was passed a ' + typeof api);
+    }
+
+    if (Array.isArray(api)) {
+      if (!meta.links.includes(api)) {
+        meta.links.push(api);
+        meta.serializedLinks.push(api.map((item) => this.serializeLeaf(item, registry, meta)));
+      }
+
+      const pointer: ILinkPlaceholder = {
+        type: LinkableType.array,
+        id: meta.links.indexOf(api),
+      }
+
+      return pointer;
+    }
+
+    // It is a normal object:
+    if (!meta.links.includes(api)) {
+
+      const ret: {[key:string]: any} = {};
+      meta.links.push(api);
+      meta.serializedLinks.push(ret);
+
+      Object.keys(api).forEach((key:string) => {
+        if (key && typeof key === 'string') {
+          ret[key] = this.serializeLeaf(api[key], registry, meta);
+        }
+      });
+
+    }
+
+    const pointer: ILinkPlaceholder = {
+      type: LinkableType.object,
+      id: meta.links.indexOf(api),
+    }
+
+   return pointer;
+  }
 
   deserialize (data: any, registry: MethodRegistry, sendMessage: ICapnodeMessageSender): any {
+    const meta: DeserializedMetaRegistry = {
+      serializedLinks: data.links,
+      reconstructed: new Array(data.links.length),
+    };
+
+    return this.deserializeLeaf(data.value, registry, sendMessage, meta);
+  }
+
+  deserializeLeaf (data: any, registry: MethodRegistry, sendMessage: ICapnodeMessageSender, meta: DeserializedMetaRegistry): any {
     switch (typeof data) {
       case 'string':
         let str = this.unescape(data);
         if (str.indexOf(this.FUNC_PREFIX) === 0) {
           const methodId = str.substr(this.FUNC_PREFIX.length);
-          return this.deserializeFunction(methodId, registry, sendMessage);
+          return this.deserializeFunction(methodId, registry, sendMessage, meta);
         } 
         return str;
       case 'number':
@@ -68,26 +162,72 @@ export default class DefaultSerializer {
       case 'undefined':
         return data;
       case 'object':
-        if (Array.isArray(data)) {
-          let result: IAsyncType[] = [];
-          data.forEach((item: ISerializedAsyncApiObject) => {
-            const newItem: IAsyncType = this.deserialize(item, registry, sendMessage);
-            result.push(newItem);
-          });
-          return result;
-        }
-        const ret: {[key:string]: any} = {};
-        Object.keys(data).forEach((key:string) => {
-          const val: IAsyncApiValue | IAsyncApiValue[] = data[key];
-          ret[key] = this.deserialize(val, registry, sendMessage);
-        })
-        return ret;
+        return this.deserializeObject(data, registry, sendMessage, meta);
     }
 
-    throw new Error('Invalid input: ' + data);
+    throw new Error('Invalid type to deserializeLeaf: ' + typeof data);
   }
 
-  deserializeFunction (methodId: string, registry: MethodRegistry, sendMessage: ICapnodeMessageSender): IRemoteAsyncMethod {
+  deserializeObject (data: any, registry: MethodRegistry, sendMessage: ICapnodeMessageSender, meta: DeserializedMetaRegistry): any {
+    if (!data || !('type' in data)|| !('id' in data)) {
+      throw new Error('deserializeObject called on non-pointer: ' + JSON.stringify(data));
+    }
+
+    const id: number = data.id;
+
+    switch (data.type) {
+      case LinkableType.array:
+        throw new Error('must implement array deserialization');
+
+      case LinkableType.function:
+        throw new Error('must implement function deserialization')
+
+      case LinkableType.object:
+        if (!meta.reconstructed[id]) {
+
+          const ret: {[key:string]: any} = {};
+          meta.reconstructed[id] = ret;
+
+          const serialized:any = meta.serializedLinks[id];
+          if (typeof serialized !== 'object') {
+            throw 'serialized object in non-object form';
+          }
+
+          Object.keys(serialized).forEach((key:string) => {
+            if (!(key in serialized) || Array.isArray(serialized)) {
+              throw 'deserialization error';
+            }
+            const val:any = serialized[key];
+            ret[key] = this.deserializeLeaf(val, registry, sendMessage, meta);
+          })
+          return ret;
+        } else {
+          return meta.reconstructed[id];
+        }
+
+    }
+
+    throw new Error('deserializeObject called with invalid data ' + data);
+
+    if (Array.isArray(data)) {
+      let result: IAsyncType[] = [];
+      data.forEach((item: ISerializedAsyncApiObject) => {
+        const newItem: IAsyncType = this.deserializeLeaf(item, registry, sendMessage, meta);
+        result.push(newItem);
+      });
+      return result;
+    }
+
+    const ret: {[key:string]: any} = {};
+    Object.keys(data).forEach((key:string) => {
+      const val: IAsyncApiValue | IAsyncApiValue[] = data[key];
+      ret[key] = this.deserializeLeaf(val, registry, sendMessage, meta);
+    })
+    return ret;
+  }
+
+
+  deserializeFunction (methodId: string, registry: MethodRegistry, sendMessage: ICapnodeMessageSender, _meta: DeserializedMetaRegistry): IRemoteAsyncMethod {
     let result: IRemoteAsyncMethod = async (...userArgs) => {
       return new Promise((res, rej) => {
 
@@ -96,7 +236,7 @@ export default class DefaultSerializer {
           type: 'invocation',
           methodId,
           replyId,
-          arguments: userArgs.map((arg) => this.serialize(arg, registry)),
+          arguments: this.serialize(userArgs, registry),
         };
         registry.registerPromise(replyId, res, rej);
         sendMessage(invocation);
