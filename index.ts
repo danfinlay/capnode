@@ -13,7 +13,6 @@ import {
   IErrorMessage,
   IInvocationMessage,
   IIndexMessage,
-  ISerializedAsyncApiObject,
  } from './src/@types/index.d';
 
 const cryptoRandomString = require('crypto-random-string');
@@ -181,11 +180,13 @@ export default class Capnode {
       throw new Error('Invocation requires a valid methodId');
     }
 
-    let deserializedArgs: IAsyncApiValue[] = [];
+    let deserializedArgs: IAsyncApiValue = [];
     if (message.arguments) {
-      deserializedArgs = message.arguments.map((arg: ISerializedAsyncApiObject) => {
-        return this.serializer.deserialize(arg, this.registry, sendMessage);
-      });
+      deserializedArgs = this.serializer.deserialize(message.arguments, this.registry, sendMessage);
+    }
+
+    if (!Array.isArray(deserializedArgs)) {
+      throw new Error('arguments must be in array form.');
     }
 
     const result = method(...deserializedArgs)

@@ -38,7 +38,7 @@ export interface IDeallocMessage extends ICapnodeMessageAbstract {
   type: 'dealloc';
 }
 
-export type ISerializedAsyncApiObject = string | number | boolean | object | Array<any>;
+export type ISerializedAsyncApiObject = string | number | boolean | object | Array<any> | undefined;
 
 export interface ICapnodeSerializer {
   serialize: (message: IAsyncApiValue, registry: MethodRegistry) => any;
