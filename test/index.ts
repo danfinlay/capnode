@@ -2,9 +2,8 @@ import test from 'tape';
 import Capnode from '../index';
 import { IAsyncApiObject, IAsyncFunction, IAsyncApiValue, IRemoteFunction } from '../src/@types/index';
 require ('../src/serializers/default.test');
-require('./cyclic-references');
 
-test('basic serialization and deserialization', async (t) => {
+test('basic serialization and api reconstruction', async (t) => {
 
   /**
    * The API we want to make available over a serializable async boundary
@@ -36,13 +35,12 @@ test('basic serialization and deserialization', async (t) => {
   try {
     // We can now request the index from cap1 on cap2:
     const remoteApi: any = await cap2.requestIndex(remote2);
-    t.ok(remoteApi, 'Remote is constructed.')
-
+ 
     // Notice they are not the same objects:
     t.notEqual(remoteApi, api, 'Api objects are not the same object.');
 
     // They do, however, share the same properties and tyeps:
-    Object.keys(remoteApi).forEach((key) => {
+   Object.keys(remoteApi).forEach((key) => {
       t.ok(key in api, 'The original api has the key ' + key);
       t.equal(typeof remoteApi[key], typeof api[key], 'The values are the same type');
 
@@ -97,7 +95,6 @@ test('creating an event emitter', async (t) => {
 
   try {
     const remoteApi: any = await cap2.requestIndex(remote2);
-
     Object.keys(remoteApi).forEach((key) => {
       t.ok(key in api, 'The original api has the key ' + key);
       t.equal(typeof remoteApi[key], typeof api[key], 'The values are the same type');
