@@ -2,6 +2,7 @@ import test from 'tape';
 import Capnode from '../index';
 import { IAsyncApiObject, IAsyncFunction, IAsyncApiValue, IRemoteFunction } from '../src/@types/index';
 require ('../src/serializers/default.test');
+require('./streaming');
 
 test('basic serialization and api reconstruction', async (t) => {
 
