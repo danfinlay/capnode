@@ -1,6 +1,8 @@
 import { MethodRegistry } from "./src/method-registry";
 import DefaultSerializer from './src/serializers/default';
 import Remote from './src/remote';
+import streamFromRemote from './src/streamFromRemote';
+
 import { 
   ICapnodeMessage,
   ICapnodeSerializer,
@@ -18,7 +20,7 @@ import {
 const cryptoRandomString = require('crypto-random-string');
 const k_BYTES_OF_ENTROPY = 20;
 
-export { Remote };
+export { Remote, streamFromRemote };
 
 export default class Capnode {
   private registry: MethodRegistry;
@@ -96,10 +98,13 @@ export default class Capnode {
   }
 
   deserialize(value: any, sendMessage: ICapnodeMessageSender): IAsyncApiValue {
+    if (!value) return;
     return this.serializer.deserialize(value, this.registry, sendMessage);
   }
 
   processMessage (message: ICapnodeMessage, remote: Remote): void {
+    if (!message) return;
+
     const emitMessage = remote.emitMessage.bind(remote);
     switch (message.type) {
       case 'invocation':
