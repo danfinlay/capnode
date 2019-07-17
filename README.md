@@ -19,12 +19,12 @@ Until [WeakReference](https://ponyfoo.com/articles/weakref) is added to the Java
 ## Features different from Dnode today:
 
 - All functions are considered async, promise-returning functions.
-- Each new function passed over the transport is not just a callback, but a full async function, capable of accepting new functions as arguments (which can compose event listeners), as well as returning asynchronous results.
+- All objects, including parameters, can include additional functions as children, allowing the passing of complex remote proxy objects, and more intuitive exchanging of APIs across boundaries that do not share memory access.
 
 ## Eventual intended features
 
-- We may experiment with signing our serialized function references, allowing them to be shared across remotes without requiring a relay.
-- We are taking some inspiration from [ocap-ld](https://w3c-ccg.github.io/ocap-ld/) in terms of serializable functions and invocations, and may adopt their schema for allowing discovery of function hosts from nothing but a serialized function itself.
+- I hope to experiment with signing our serialized function references, allowing them to be shared across remotes without requiring a relay.
+- I am taking some inspiration from [ocap-ld](https://w3c-ccg.github.io/ocap-ld/) in terms of serializable functions and invocations, and may adopt their schema for allowing discovery of function hosts from nothing but a serialized function itself.
 - I am interested in experimenting with "promise pipelining", and related concepts, which could allow, for example, a pending Capnode promise to be passed to another Capnode function as an argument before going offline, allowing those two remotes to resolve the function independently.
 - To share a signed function remotely will require supporting signed delegation chains of function references, as part of the serialization format.
 
@@ -68,7 +68,7 @@ Currently our best examples are in the test folder.
   try {
     // We can now request the index from cap1 on cap2:
     const remoteApi: any = await cap2.requestIndex(remote2);
- 
+
     // Notice they are not the same objects:
     t.notEqual(remoteApi, api, 'Api objects are not the same object.');
 
