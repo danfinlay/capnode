@@ -1,6 +1,6 @@
 {
   "name": "capnode",
-  "version": "2.2.3",
+  "version": "3.0.0",
   "description": "A JS promise-based capabilities system over any stream.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
