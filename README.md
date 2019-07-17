@@ -1,146 +1,96 @@
 # CapNode [![CircleCI](https://circleci.com/gh/danfinlay/capnode.svg?style=svg)](https://circleci.com/gh/danfinlay/capnode)
 
-Sharing objects and their methods over a JSON transport as easy as passing around the JS Objects themselves.
+Sharing objects and their methods over a JSON transport as easy as passing around the JS Objects themselves. [Sometimes called] remote proxy objects.
 
-## Features different from Dnode:
+Very much inspired by [dnode](https://www.npmjs.com/package/dnode), but intended to be extended in a few different directions.
+
+Created to make it especially easy for developers to very intuitively create externally consumable APIs.
+
+## Status
+
+Very early WIP, needs thorough audit and QA.
+
+External APIs are pretty simple, so they may be stable, but until [we](https://metamask.io/) are using it in production, I will probably break APIs freely.
+
+Internal serialization schema should be considered highly unstable, as we have plans that involve changing or at least extending it.
+
+Until [WeakReference](https://ponyfoo.com/articles/weakref) is added to the JavaScript standard, there is no way to detect a remote has no remaining references to a function, and so the only way to avoid memory leaks is to use the `.dealloc()` method appended to all functions exported by Capnode. But [WeakRef should be rolling out soon](https://v8.dev/features/weak-references)!
+
+## Features different from Dnode today:
 
 - All functions are considered async, promise-returning functions.
-- Ability to pass functions in return values as well as in arguments, allowing support for subscriptions and event listeners.
+- Each new function passed over the transport is not just a callback, but a full async function, capable of accepting new functions as arguments (which can compose event listeners), as well as returning asynchronous results.
+
+## Eventual intended features
+
+- We may experiment with signing our serialized function references, allowing them to be shared across remotes without requiring a relay.
+- We are taking some inspiration from [ocap-ld](https://w3c-ccg.github.io/ocap-ld/) in terms of serializable functions and invocations, and may adopt their schema for allowing discovery of function hosts from nothing but a serialized function itself.
+- I am interested in experimenting with "promise pipelining", and related concepts, which could allow, for example, a pending Capnode promise to be passed to another Capnode function as an argument before going offline, allowing those two remotes to resolve the function independently.
+- To share a signed function remotely will require supporting signed delegation chains of function references, as part of the serialization format.
 
 ## Usage Example
 
 Currently our best examples are in the test folder.
 
 ```javascript
-const test = require('tape')
-const capnode = require('capnode')
-
-test('reconstructing an api and calling it', async (t) => {
-  const object = {
+  /**
+   * The API we want to make available over a serializable async boundary
+   * like a network, process, or other context:
+   */
+  const api: IAsyncApiObject = {
     foo: 'bar',
-    baz: async () => 'win',
-    inner: {
-      light: async () => 'haha',
-    }
+    baz: async () => 'bam',
+    bork: undefined,
+
+    // We can even freely define event-emitting functions:
+    on: (eventName, callback) => {
+      // whenever we want:
+      callback('data', 'hello!');
+    },
   }
 
-  const server = capnode.createServer(object)
+  // A capnode is made a server by receiving an API as its index:
+  const cap = new Capnode({
+    index: api,
+  });
 
-  const serializedApi = server.getSerializedLocalApi()
+  // A client is created, perhaps in another process:
+  const cap2 = new Capnode({});
 
-  // This is just a pure JSON-serializable pojo! Look!
-  const serialized = JSON.parse(JSON.stringify(serializedApi))
+  // Each capnode creates a remote, representing its connection to the other:
+  const remote = cap.createRemote();
+  const remote2 = cap2.createRemote();
 
-  const client = capnode.createClient(serialized)
+  // Each remote is given a method to send messages to the other:
+  remote.addRemoteMessageListener((message) => remote2.receiveMessage(message));
+  remote2.addRemoteMessageListener((message) => remote.receiveMessage(message));
 
-  // Communication should be bidirectional:
-  client.addMessageListener(server.receiveMessage)
-  server.addMessageListener(client.receiveMessage)
+  try {
+    // We can now request the index from cap1 on cap2:
+    const remoteApi: any = await cap2.requestIndex(remote2);
+ 
+    // Notice they are not the same objects:
+    t.notEqual(remoteApi, api, 'Api objects are not the same object.');
 
-  // Reconstructing the API over the comms:
-  const deserialized = client.getDeserializedRemoteApi()
+    // They do, however, share the same properties and tyeps:
+   Object.keys(remoteApi).forEach((key) => {
+      t.ok(key in api, 'The original api has the key ' + key);
+      t.equal(typeof remoteApi[key], typeof api[key], 'The values are the same type');
 
-  compareRecursively(object, deserialized)
-
-  function compareRecursively (object, deserialized) {
-    Object.keys(object).forEach((key) => {
-      switch (typeof key) {
-        case 'object':
-          compareRecursively(object[key], deserialized[key])
-          break
-        default:
-          t.ok(key in deserialized, `The key ${key} exists in the reconstructed object.`)
-          t.equal(typeof deserialized[key], typeof object[key], 'equivalent types for ' + key)
+      // Other than functions, they are even the same value:
+      if (typeof remoteApi[key] !== 'function') {
+        t.equal(remoteApi[key], api[key]);
       }
     })
+
+    // We can even call the functions provided:
+    const result = await remoteApi.baz();
+    t.equal(result, 'bam');
+
+  } catch (err) {
+    t.error(err);
   }
-
-  const result = await deserialized.inner.light()
-  t.equal(result, 'haha')
-  t.end()
-
-})
-
-test('passing a method-having object in response to a method', async (t) => {
-  const object = {
-    foo: 'bar',
-    baz: async () => 'win',
-    inner: {
-      light: async () => {
-        return {
-          ultimate: async () => 'success'
-        }
-      },
-    }
-  }
-
-  const server = capnode.createServer(object)
-
-  const serializedApi = server.getSerializedLocalApi()
-
-  const client = capnode.createClient(serializedApi)
-
-  // Communication should be bidirectional:
-  client.addMessageListener(server.receiveMessage)
-  server.addMessageListener(client.receiveMessage)
-
-  // Reconstructing the API over the comms:
-  const deserialized = client.getDeserializedRemoteApi()
-
-  const boss = await deserialized.inner.light()
-  const result = await boss.ultimate()
-  t.equal(result, 'success')
-  t.end()
-
-})
-
-test('passing a method-having object in response to a method', async (t) => {
-  const object = {
-    subscribe: (listener) => {
-      setTimeout(() => {
-        listener(1)
-        listener(2)
-        listener(3)
-      }, 100)
-    }
-  }
-
-  const server = capnode.createServer(object)
-
-  const serializedApi = server.getSerializedLocalApi()
-
-  const client = capnode.createClient(serializedApi)
-
-  // Communication should be bidirectional:
-  client.addMessageListener(server.receiveMessage)
-  server.addMessageListener(client.receiveMessage)
-
-  // Reconstructing the API over the comms:
-  const deserialized = client.getDeserializedRemoteApi()
-
-  let calls = 0
-  deserialized.subscribe((counter) => {
-    calls++
-
-    switch (calls) {
-      case 1:
-        t.equal(calls, counter, 'called correctly')
-        break
-
-      case 2:
-        t.equal(calls, counter, 'called correctly')
-        break
-
-      case 3:
-        t.equal(calls, counter, 'called correctly')
-        t.end()
-        break
-
-      default:
-        t.ok(false, 'did not call with the right arg')
-    }
-  })
-
+  t.end();
 })
 
 ```
@@ -150,68 +100,111 @@ test('passing a method-having object in response to a method', async (t) => {
 You can also use capnode with streams, by using the streaming constructors:
 
 ```javascript
-const test = require('tape')
-const capnode = require('../')
-
-test('connecting two instances via streams', async (t) => {
-
-  const object = {
+import Capnode, { streamFromRemote, Remote } from 'capnode';
+import { IAsyncApiObject } from '../src/@types/index';
+  const api: IAsyncApiObject = {
     foo: 'bar',
-    baz: async () => 'win',
-    other: { 'stuff': 4 },
+    baz: async () => 'bam',
+    bork: undefined,
   }
 
-  const server = capnode.createStreamingServer(object)
-  const serverStream = server.stream
+  const cap = new Capnode({
+    index: api,
+    nickname: 'cap1',
+  });
 
-  const client = await capnode.createClientFromStream(serverStream)
+  // Bear with me, imagine cap2 is in a separate process,
+  // where objects cannot be freely passed between functions.
+  const cap2 = new Capnode({ nickname: 'cap2' });
 
-  // Reconstructing the API over the comms:
-  const deserialized = await client.getDeserializedRemoteApi()
-  compareRecursively(object, deserialized)
+  const remote = cap.createRemote();
+  const remote2 = cap2.createRemote();
 
-  function compareRecursively (object, deserialized) {
-    Object.keys(object).forEach((key) => {
-      switch (typeof key) {
-        case 'object':
-          compareRecursively(object[key], deserialized[key])
-          break
-        default:
-          t.ok(key in deserialized, `The key ${key} exists in the reconstructed object.`)
-          t.equal(typeof deserialized[key], typeof object[key], 'equivalent types for ' + key)
-      }
-    })
-  }
+  const stream = streamFromRemote(remote);
+  const stream2 = streamFromRemote(remote2);
 
-  t.end()
-})
+  stream.pipe(stream2).pipe(stream);
 ```
 
-## Status
+## API
 
-Basic proof of concept is now working. Needs more testing.
+### constructor: new Capnode(options)
 
-Also, until [WeakReference](https://ponyfoo.com/articles/weakref) is added to the JavaScript standard, there is no way to detect a remote has no remaining references to a function, meaning there is an incremented reference count every time a function is passed over this transport, and the only way to clean up that memory for now is to reallocate the whole thing.
+Options:
+
+- index: an optional JavaScript object to be used as the local server's index, when requested from external Remotes.
+- registry: an optional MethodRegistry instance, used for restoring a set of function references at construction.
+- serializer: an optional Serializer object used to define the schema used in transport.
+- nickname: an optional nickname string which can be used for debugging.
+
+### capnode.createRemote(): returns Remote
+
+This method is used to construct a communication channel with a remote entity. It is assumed that each remote is pre-authenticated, and remotes are able to request the index and call functions in the registry freely.
+
+Remotes can be wrapped as streams using the exported `streamFromRemote` function.
+
+Once a remote is received, it should be configured to communicate over a given transport, and so a remote should be constructed at connection time, and it should be configured accordingly.
+
+```javascript
+function newConnection (connection) {
+
+  const remote = capnode.createRemote();
+
+  connection.on('message', (message) => remote.receiveMessage(message));
+  function sendRemoteMessage (message) {
+    connection.send(message);
+  }
+  remote.addRemoteMessageListener(sendRemoteMessage);
+
+  connection.on('end', () => remote.removeRemoteMessageListener(sendRemoteMessage));
+}
+```
+
+Alternatively, if you prefer a streaming API:
+
+```javascript
+import { streamFromRemote } from 'capnode';
+
+function newConnection (connectionStream) {
+  const remote = capnode.createRemote();
+  const capStream = streamFromRemote(remote);
+  connectionStream.pipe(capStream).pipe(connectionStream);
+}
+```
+
+### clearRemote (remote: Remote)
+
+Removes a given remote, and stops notifying it when there are new outbound messages.
+
+### capnode.requestIndex(remote) returns Promise<AsyncApiValue>
+
+Once a local remote is connected to a remote capnode with an index available, we can request it with this method.
+
+All capnode interactions begin with one side requesting an index from the other side. Any capnode instance can host an index, but only instances that host an index make their functions available to remote connections.
+
+It returns a promise that will resolve in a type we internally call an `AsyncApiValue`. The index itself is also defined as an `AsyncApiValue`.
+
+### AsyncApiValue
+
+An `AsyncApiValue` ([type definition](./src/@types/index.d.ts)) is a value that is either:
+
+- A primitive, JSON-serializable value like `number`, `string`, `undefined`, or `boolean`.
+- An Array.
+- An object whose keys are strings and whose values are `AsyncApiValue`s.
+- Functions which accept `AsyncApiValues` as arguments, and return promises that resolve as an `AsyncApiValue`.
+
+When you are returned one of these values, you are able to mutate your local copy, but your synchronous changes will not affect the remote copy of the object. Only calling the included functions can have remote side effects.
+
+This type is defined because it is what we are able to serialize over a remote [membrane](http://blog.ezyang.com/2013/03/what-is-a-membran/). You can think of it as JSON with promise-returning functions.
+
+### Other Methods
+
+Other methods are basically only needed internally, but I've written this module in TypeScript, so hopefully you find it easy to navigate the source files to find any additional methods you might require.
 
 ## Direction
-
-I tell a bit of the story of how I got here [in this thread on OcapJs](https://ocapjs.org/t/hi-there-brief-introduction/64).
 
 Currently assumes authenticated connections between clients and servers. Eventually I would like to support arbitrary authentication schemes, including chained attenuations like is enabled with [ocap-ld](https://w3c-ccg.github.io/ocap-ld/).
 
 Aspires to make decentralized delegation of any computer function as easy as passing around JS Promises, as they were [originally intended](http://www.erights.org/talks/promises/).
 
-On the `eip-712` branch, the general serialization format is basically ocap-ld but with ethereum's signTypedData signature methods, intended to make some of these capabilities redeemable on the ethereum blockchain.
-
-I was thinking it would be cool to use some of the early semantics from [Mark Miller and Hal Finney](https://ocapjs.org/t/abstracting-crypto-into-builtin-ocap-abstractions/55).
-
-This module could have a `seal` and `unseal` method (ocap equivalents of serialize and deserialize).
-
-Transport of the messages could be handled externally, which takes this a small step away from its `dnode`-inspired roots, although I sure wouldn't mind exposing stream interfaces once the seal/unseal is working correctly.
-
-
-## Todo
-
 The [ocap-ld spec](https://w3c-ccg.github.io/ocap-ld/#actions) suggests the `action` field can be used to direct the consumer how to redeem the capability, which would be cool to add eventually, so a server could be serving on multiple transports.
-
-
