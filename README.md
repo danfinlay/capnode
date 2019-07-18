@@ -1,6 +1,6 @@
 # CapNode [![CircleCI](https://circleci.com/gh/danfinlay/capnode.svg?style=svg)](https://circleci.com/gh/danfinlay/capnode)
 
-Sharing objects and their methods over a JSON transport as easy as passing around the JS Objects themselves. [Sometimes called] remote proxy objects.
+Sharing objects and their methods over a JSON transport as easy as passing around the JS Objects themselves. [Sometimes called](http://blog.ezyang.com/2013/03/what-is-a-membran/) remote proxy objects.
 
 Very much inspired by [dnode](https://www.npmjs.com/package/dnode), but intended to be extended in a few different directions.
 
