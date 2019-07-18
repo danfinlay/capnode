@@ -228,7 +228,9 @@ export default class Capnode {
   }
 
   requestIndex(remote: Remote): Promise<IAsyncApiObject> {
-    if (!remote) return this.index;
+    if (!remote) {
+      throw new Error('requesting index requires remote as argument.')
+    }
 
     return new Promise((res, rej) => {
       const methodId:string = random();

@@ -100,7 +100,4 @@ export default class Remote extends Duplex {
   emitMessage(message: ICapnodeMessage): void {
     this.informAll(this.remoteMessageListeners, message);
   }
-
-
-
 }
