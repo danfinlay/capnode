@@ -15,19 +15,14 @@ export default class Remote extends Duplex {
   private streamReading = false;
   private queue: ICapnodeMessage[] = [];
 
-  constructor(messageHandler?: ICapnodeMessageSender) extends Duplex {
-    const sendOverStream = this.sendMessageOverStream.bind(this);
-    this.sendOverStream = sendOverStream;
-
-    this.addMessageListener(messageHandler);
-
+  constructor(messageHandler?: ICapnodeMessageSender) {
     super({
       objectMode: true,
       write: (message: ICapnodeMessage, _encoding, cb: (err?: Error) => void) => {
         try {
           this.receiveMessage(message);
         } catch (err) {
-          this.removeMessageListener(sendOverStream);
+          this.removeMessageListener(this.sendMessageOverStream);
           return cb(err);
         }
         cb();
@@ -38,7 +33,7 @@ export default class Remote extends Duplex {
         // recipient is ready to have messages pushed.
         if (this.queue.length > 0) {
           let next = this.queue.shift()
-          while (stream.push(next)) {
+          while (this.push(next)) {
             next = this.queue.shift()
           }
 
@@ -50,9 +45,15 @@ export default class Remote extends Duplex {
       }
     });
 
+    this.sendMessageOverStream = this.sendMessageOverStream.bind(this);
+    this.addRemoteMessageListener(this.sendMessageOverStream);
+
+    if (messageHandler) {
+      this.addMessageListener(messageHandler);
+    }
   }
 
-  function sendMessageOverStream(outbound: ICapnodeMessage) {
+  sendMessageOverStream(outbound: ICapnodeMessage) {
     if (this.streamReading) {
       this.push(outbound);
     } else {

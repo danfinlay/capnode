@@ -26,8 +26,10 @@ test('Should be able to pass API over stream.', async (t) => {
 
   connectRemotes(remote, remote2);
 
+console.log('request index')
   try {
     const remoteApi: any = await cap2.requestIndex(remote2);
+    console.log('remote api: ', remoteApi)
  
     t.notEqual(remoteApi, api, 'Api objects are not the same object.');
 

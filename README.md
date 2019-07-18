@@ -97,7 +97,7 @@ Currently our best examples are in the test folder.
 
 ### Streams
 
-You can also use capnode with streams, by using the streaming constructors:
+You can also use the remotes as streams and over streams, for a simplified interface:
 
 ```javascript
 import Capnode, { streamFromRemote, Remote } from 'capnode';
@@ -120,10 +120,7 @@ import { IAsyncApiObject } from '../src/@types/index';
   const remote = cap.createRemote();
   const remote2 = cap2.createRemote();
 
-  const stream = streamFromRemote(remote);
-  const stream2 = streamFromRemote(remote2);
-
-  stream.pipe(stream2).pipe(stream);
+  remote.pipe(remote2).pipe(remote);
 ```
 
 ## API
@@ -163,12 +160,9 @@ function newConnection (connection) {
 Alternatively, if you prefer a streaming API:
 
 ```javascript
-import { streamFromRemote } from 'capnode';
-
 function newConnection (connectionStream) {
   const remote = capnode.createRemote();
-  const capStream = streamFromRemote(remote);
-  connectionStream.pipe(capStream).pipe(connectionStream);
+  connectionStream.pipe(remote).pipe(connectionStream);
 }
 ```
 

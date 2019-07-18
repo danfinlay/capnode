@@ -50,8 +50,7 @@ export default class Capnode {
   }
 
   createRemote(): Remote {
-    const remote = new Remote();
-    remote.addMessageListener((message: ICapnodeMessage) => {
+    const remote = new Remote((message: ICapnodeMessage) => {
       this.processMessage(message, remote);
     });
     this.remotes.add(remote);
