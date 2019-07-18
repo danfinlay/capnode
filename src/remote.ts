@@ -1,4 +1,5 @@
 import { ICapnodeMessageSender, ICapnodeMessage } from "./@types";
+import { Duplex } from 'stream';
 
 /**
  * The Remote class is used to represent a single connection to a Capnode host.
@@ -8,12 +9,55 @@ import { ICapnodeMessageSender, ICapnodeMessage } from "./@types";
  * @property messageHandler - The method used by the local capnode instance to send its messages to this remote instance.
  * 
  */
-export default class Remote {
+export default class Remote extends Duplex {
   private localMessageListeners: Set<ICapnodeMessageSender> = new Set();
   private remoteMessageListeners: Set<ICapnodeMessageSender> = new Set();
+  private streamReading = false;
+  private queue: ICapnodeMessage[] = [];
 
-  constructor(messageHandler?: ICapnodeMessageSender) {
+  constructor(messageHandler?: ICapnodeMessageSender) extends Duplex {
+    const sendOverStream = this.sendMessageOverStream.bind(this);
+    this.sendOverStream = sendOverStream;
+
     this.addMessageListener(messageHandler);
+
+    super({
+      objectMode: true,
+      write: (message: ICapnodeMessage, _encoding, cb: (err?: Error) => void) => {
+        try {
+          this.receiveMessage(message);
+        } catch (err) {
+          this.removeMessageListener(sendOverStream);
+          return cb(err);
+        }
+        cb();
+      },
+      read: () => {
+        this.streamReading = true;
+
+        // recipient is ready to have messages pushed.
+        if (this.queue.length > 0) {
+          let next = this.queue.shift()
+          while (stream.push(next)) {
+            next = this.queue.shift()
+          }
+
+          if (this.queue.length > 0) {
+            // Recipient is overloaded, resume queueing:
+            this.streamReading = false
+          }
+        }
+      }
+    });
+
+  }
+
+  function sendMessageOverStream(outbound: ICapnodeMessage) {
+    if (this.streamReading) {
+      this.push(outbound);
+    } else {
+      this.queue.push(outbound);
+    }
   }
 
   /**

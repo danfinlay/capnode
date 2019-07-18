@@ -1,12 +1,9 @@
 import test from 'tape';
-import Capnode, { streamFromRemote, Remote } from '../index';
+import Capnode, { Remote } from '../index';
 import { IAsyncApiObject } from '../src/@types/index';
 
 function connectRemotes(remote: Remote, remote2: Remote): void {
-  const stream = streamFromRemote(remote);
-  const stream2 = streamFromRemote(remote2);
-
-  stream.pipe(stream2).pipe(stream);
+  remote.pipe(remote2).pipe(remote);
 }
 
 test('Should be able to pass API over stream.', async (t) => {
