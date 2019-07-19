@@ -195,6 +195,19 @@ This type is defined because it is what we are able to serialize over a remote [
 
 Other methods are basically only needed internally, but I've written this module in TypeScript, so hopefully you find it easy to navigate the source files to find any additional methods you might require.
 
+## CapWrap
+
+This module also exports a convenience method called `capWrap`, which you can use to wrap an object with the default capnode configuration. This could be useful as a form of deep freezing, making functions async, or just for testing capnode behavior on an object you're considering exposing as a remote proxy.
+
+Usage:
+
+```javascript
+import { capWrap } from 'capnode';
+
+const yourObject = { foo: async () => 'bar!' }
+const aClone = capWrap(yourObject);
+```
+
 ## Direction
 
 Currently assumes authenticated connections between clients and servers. Eventually I would like to support arbitrary authentication schemes, including chained attenuations like is enabled with [ocap-ld](https://w3c-ccg.github.io/ocap-ld/).

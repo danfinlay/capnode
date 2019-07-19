@@ -2,6 +2,7 @@ import { MethodRegistry } from "./src/method-registry";
 import DefaultSerializer from './src/serializers/default';
 import Remote from './src/remote';
 import streamFromRemote from './src/streamFromRemote';
+import capWrap from './src/cap-wrap';
 
 import { 
   ICapnodeMessage,
@@ -20,7 +21,7 @@ import {
 const cryptoRandomString = require('crypto-random-string');
 const k_BYTES_OF_ENTROPY = 20;
 
-export { Remote, streamFromRemote };
+export { Remote, streamFromRemote, capWrap };
 
 export default class Capnode {
   private registry: MethodRegistry;

@@ -1,9 +1,8 @@
 import test from 'tape';
-import Capnode from '../index';
+import Capnode, { capWrap } from '../index';
 import { IAsyncApiObject, IAsyncFunction, IAsyncApiValue, IRemoteFunction } from '../src/@types/index';
 require ('../src/serializers/default.test');
 require('./streaming');
-require('./capWrap');
 
 test('basic serialization and api reconstruction', async (t) => {
 
@@ -17,26 +16,9 @@ test('basic serialization and api reconstruction', async (t) => {
     bork: undefined,
   }
 
-  // A capnode is made a server by receiving an API as its index:
-  const cap = new Capnode({
-    index: api,
-    nickname: 'cap1',
-  });
-
-  // A client is created, perhaps in another process:
-  const cap2 = new Capnode({ nickname: 'cap2' });
-
-  // Each capnode creates a remote, representing its connection to the other:
-  const remote = cap.createRemote();
-  const remote2 = cap2.createRemote();
-
-  // Each remote is given a method to send messages to the other:
-  remote.addRemoteMessageListener((message) => remote2.receiveMessage(message));
-  remote2.addRemoteMessageListener((message) => remote.receiveMessage(message));
-
   try {
     // We can now request the index from cap1 on cap2:
-    const remoteApi: any = await cap2.requestIndex(remote2);
+    const remoteApi: any = await capWrap(api);
  
     // Notice they are not the same objects:
     t.notEqual(remoteApi, api, 'Api objects are not the same object.');
