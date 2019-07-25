@@ -2,7 +2,7 @@ import test from 'tape';
 import DefaultSerializer from './default';
 import { MethodRegistry } from '../method-registry';
 
-// require ('../serializers/default.test');
+// TODO: Add a circular array test.
 
 test('serializes and deserializes circular objects', (t) => {
   const serializer = new DefaultSerializer();
