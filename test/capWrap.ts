@@ -10,7 +10,7 @@ test('basic serialization and api reconstruction', async (t) => {
    * The API we want to make available over a serializable async boundary
    * like a network, process, or other context:
    */
-  const api: IAsyncApiObject = {
+  const api: IApiObject = {
     foo: 'bar',
     baz: async () => 'bam',
     bork: undefined,
