@@ -1,6 +1,3 @@
-import {
-  IAsyncFunction,
-} from '../@types/index';
 const cryptoRandomString = require('crypto-random-string');
 const k_BYTES_OF_ENTROPY = 20
 
@@ -10,20 +7,20 @@ type IResolver = {
 }
 
 export class MethodRegistry {
-  private indexFuncs: Set<IAsyncFunction> = new Set();
-  private methodMap: Map<string, IAsyncFunction> = new Map();
-  private reverseMap: Map<IAsyncFunction, string> = new Map();
+  private indexFuncs: Set<Function> = new Set();
+  private methodMap: Map<string, Function> = new Map();
+  private reverseMap: Map<Function, string> = new Map();
   public pendingPromises: Map<string, IResolver> = new Map();
 
-  protectFunction (method: IAsyncFunction) {
+  protectFunction (method: Function) {
     this.indexFuncs.add(method);
   }
 
-  unprotectFunction (method: IAsyncFunction) {
+  unprotectFunction (method: Function) {
     this.indexFuncs.delete(method);
   }
 
-  registerFunction (method: IAsyncFunction): string {
+  registerFunction (method: Function): string {
     const oldId = this.reverseMap.get(method);
     if (oldId && typeof oldId === 'string') {
       this.methodMap.set(oldId, method);
@@ -37,7 +34,7 @@ export class MethodRegistry {
     return id;
   }
 
-  getFunction (methodId: string): IAsyncFunction | undefined {
+  getFunction (methodId: string): Function | undefined {
     return this.methodMap.get(methodId);
   }
 
@@ -53,7 +50,7 @@ export class MethodRegistry {
     }
   }
 
-  getId (method: IAsyncFunction): string | undefined { 
+  getId (method: Function): string | undefined { 
     return this.reverseMap.get(method);
   }
 

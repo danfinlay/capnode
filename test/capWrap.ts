@@ -236,7 +236,7 @@ test('remote deallocation', async (t) => {
   remote2.addRemoteMessageListener((message) => remote.receiveMessage(message));
 
   try {
-    const remoteApi: any = await cap2.requestIndex(remote2);
+    const remoteApi: IAsyncApiValue = await cap2.requestIndex(remote2);
 
     const listeners: IRemoteFunction[] = [];
     const emitter = {
@@ -257,6 +257,10 @@ test('remote deallocation', async (t) => {
       }
     };
 
+    if (!('receiveEvents' in remoteApi) || typeof remoteApi['receiveEvents'] !== 'function') {
+      t.fail('remote api lacked subscription method')
+      return t.end()
+    }
     await remoteApi.receiveEvents(emitter);
 
   } catch (err) {
@@ -266,4 +270,10 @@ test('remote deallocation', async (t) => {
   t.end();
 })
 
-
+test('makes functions async', async (t) => {
+    const EXPECTED = 'Hello!'
+    const func = () => EXPECTED
+    const func2 = await capWrap(func);
+    const result = await func2();
+    t.equal(result, EXPECTED, 'Made function async.')
+})

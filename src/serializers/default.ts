@@ -3,8 +3,9 @@ import {
   IInvocationMessage,
   ICapnodeMessageSender,
   IAsyncFunction,
-  ISerializedAsyncApiObject,
   IDeallocMessage,
+  IApiValue,
+  IAsyncArray,
 } from '../@types/index.d';
 const cryptoRandomString = require('crypto-random-string');
 const k_BYTES_OF_ENTROPY = 20;
@@ -24,19 +25,35 @@ type ILinkPlaceholder = {
   id: number,
 }
 
-type SerializedFormat = {
-  links: ISerializedAsyncApiObject[],
-  value: ISerializedAsyncApiObject,
+type IDefaultSerializedLeaf = string | number | boolean | undefined | ILinkPlaceholder;
+export type SerializedFormat = {
+  links: IDefaultSerializedLinkable[],
+  value: IDefaultSerializedLeaf,
 }
+type IDefaultSerializedObject = { [key:string]: IDefaultSerializedLeaf };
+/**
+ * string is how we currently serialize functions.
+ * Array is just a regular array with serialized leaves in it, which can be LinkPlaceholders pointing at other objects in this array.
+ * IDefaultSerializedObject is just another root object.
+ */
+export type IDefaultSerializedLinkable = string | Array<IDefaultSerializedLeaf> | IDefaultSerializedObject;
 
+/**
+ * The MetaLinkRegistry is used to keep track of object identities, to de-duplicate
+ * and handle circular objects. It is passed to each iteration of the serializer.
+ * `links` hold references to the original objects passed-by-reference.
+ * The `serializedLinks` holds the `IDefaultSerializedLinkable` values for the equivalent `link` array index.
+ */
 type MetaLinkRegistry = {
-  links: Array<IAsyncFunction | Array<any> | object>;
-  serializedLinks: ISerializedAsyncApiObject[];
+  // The actual object references:
+  links: Array<IApiValue>;
+  serializedLinks: IDefaultSerializedLinkable[];
 }
 
 type DeserializedMetaRegistry = {
-  serializedLinks: ISerializedAsyncApiObject[];
-  reconstructed: Array<any>;
+  // The serialized references:j
+  serializedLinks: IDefaultSerializedLinkable[];
+  reconstructed: IAsyncArray;
 }
 
 import { MethodRegistry } from '../method-registry';
@@ -45,7 +62,7 @@ export default class DefaultSerializer {
   public ESC_SEQ: string = '!EK';
   public FUNC_PREFIX: string = 'CF:';
 
-  serialize (api: IAsyncApiValue, registry: MethodRegistry): any {
+  serialize (api: IApiValue, registry: MethodRegistry): SerializedFormat {
     const meta: MetaLinkRegistry = {
       serializedLinks: [],
       links: [],
@@ -59,7 +76,7 @@ export default class DefaultSerializer {
     return result;
   }
 
-  serializeLeaf (api: IAsyncApiValue, registry: MethodRegistry, meta: MetaLinkRegistry): any {
+  serializeLeaf (api: IApiValue, registry: MethodRegistry, meta: MetaLinkRegistry): IDefaultSerializedLeaf {
     switch (typeof api) {
       case 'string':
         return api;
@@ -94,7 +111,7 @@ export default class DefaultSerializer {
     throw new Error('Invalid input: ' + JSON.stringify(api));
   } 
 
-  serializeObject(api: IAsyncApiValue, registry: MethodRegistry, meta: MetaLinkRegistry) {
+  serializeObject(api: IApiValue, registry: MethodRegistry, meta: MetaLinkRegistry): ILinkPlaceholder {
     if (!api || typeof api !== 'object') {
       throw new Error('serializeObject was passed a ' + typeof api);
     }
@@ -106,7 +123,7 @@ export default class DefaultSerializer {
     // It is a normal object:
     if (!meta.links.includes(api)) {
 
-      const ret: {[key:string]: any} = {};
+      const ret: IDefaultSerializedObject = {};
       meta.links.push(api);
       meta.serializedLinks.push(ret);
 
@@ -115,7 +132,6 @@ export default class DefaultSerializer {
           ret[key] = this.serializeLeaf(api[key], registry, meta);
         }
       });
-
     }
 
     const pointer: ILinkPlaceholder = {
@@ -126,7 +142,7 @@ export default class DefaultSerializer {
    return pointer;
   }
 
-  serializeArray (api: IAsyncApiValue, registry: MethodRegistry, meta: MetaLinkRegistry) {
+  serializeArray (api: IApiValue, registry: MethodRegistry, meta: MetaLinkRegistry) {
     if (!api || typeof api !== 'object' || !Array.isArray(api)) {
       throw new Error('serializeObject was passed a ' + typeof api);
     }
@@ -134,7 +150,10 @@ export default class DefaultSerializer {
     if (!meta.links.includes(api)) {
       // Switching these two lines around breaks everything.
       // Isn't that crazy? Took me like an hour to trace it to this.
-      meta.serializedLinks.push(api.map((item) => this.serializeLeaf(item, registry, meta)));
+      meta.serializedLinks.push(api.map((item: IApiValue) => {
+        const leaf: IDefaultSerializedLeaf = this.serializeLeaf(item, registry, meta);
+        return leaf;
+      }));
       meta.links.push(api);
     }
 
@@ -146,7 +165,7 @@ export default class DefaultSerializer {
     return pointer;
   }
 
-  deserialize (data: any, registry: MethodRegistry, sendMessage: ICapnodeMessageSender): any {
+  deserialize (data: SerializedFormat, registry: MethodRegistry, sendMessage: ICapnodeMessageSender): IAsyncApiValue {
     const meta: DeserializedMetaRegistry = {
       serializedLinks: data.links,
       reconstructed: new Array(data.links.length),
@@ -155,7 +174,7 @@ export default class DefaultSerializer {
     return this.deserializeLeaf(data.value, registry, sendMessage, meta);
   }
 
-  deserializeLeaf (data: any, registry: MethodRegistry, sendMessage: ICapnodeMessageSender, meta: DeserializedMetaRegistry): any {
+  deserializeLeaf (data: IDefaultSerializedLeaf, registry: MethodRegistry, sendMessage: ICapnodeMessageSender, meta: DeserializedMetaRegistry): IAsyncApiValue {
     switch (typeof data) {
       case 'string':
         return data;
@@ -166,14 +185,25 @@ export default class DefaultSerializer {
       case 'undefined':
         return data;
       case 'object':
-        return this.deserializeObject(data, registry, sendMessage, meta);
+        if (this.validateLinkPlaceholder(data)) {
+          return this.deserializeObject(data, registry, sendMessage, meta);
+        }
     }
 
     throw new Error('Invalid type to deserializeLeaf: ' + typeof data);
   }
 
-  deserializeObject (data: any, registry: MethodRegistry, sendMessage: ICapnodeMessageSender, meta: DeserializedMetaRegistry): any {
-    if (!data || !('type' in data)|| !('id' in data)) {
+  /**
+   * A type guard for IDefaultSerializedLeaf.
+   * @param IDefaultSerializedLeaf data - The object to check for whether it is an IDefaultSerializedLeaf.
+   * @returns boolean - Whether or not the type was matched.
+   */
+  validateLinkPlaceholder(data: any) : boolean {
+    return !(!data || typeof data !== 'object' || !('type' in data) || !('id' in data));
+  }
+
+  deserializeObject (data: IDefaultSerializedLeaf, registry: MethodRegistry, sendMessage: ICapnodeMessageSender, meta: DeserializedMetaRegistry): IAsyncApiValue {
+    if (!data || typeof data !== 'object' || !('type' in data) || !('id' in data)) {
       throw new Error('deserializeObject called on non-pointer: ' + JSON.stringify(data));
     }
 
@@ -191,7 +221,7 @@ export default class DefaultSerializer {
             throw 'Array pointer pointed at non-array link entry.'
           }
 
-          serialized.forEach((item: ISerializedAsyncApiObject) => {
+          serialized.forEach((item: IDefaultSerializedLeaf) => {
             ret.push(this.deserializeLeaf(item, registry, sendMessage, meta));
           })
           return ret;
@@ -213,20 +243,29 @@ export default class DefaultSerializer {
         }
 
       case LinkableType.object:
-        if (!meta.reconstructed[id]) {
-          const serialized:any = meta.serializedLinks[id];
+        if (!meta.reconstructed[id]
+          && meta.serializedLinks[id]
+          && typeof meta.serializedLinks[id] === 'object') {
+
+          const item = meta.serializedLinks[id];
+          if (typeof item !== 'object') {
+            throw new Error('Linkable type misidentified as object.');
+          }
+          const serialized:IDefaultSerializedLinkable = item;
 
           let ret: {[key:string]: any} = {};
           meta.reconstructed[id] = ret;
 
-          if (typeof serialized !== 'object') {
+          if (typeof serialized !== 'object' || Array.isArray(serialized)) {
             throw 'serialized object in non-object form' + serialized;
           }
 
           Object.keys(serialized).forEach((key:string) => {
-            const val:any = serialized[key];
-            const func: Function = this.deserializeLeaf(val, registry, sendMessage, meta);
-            ret[key] = func;
+            const val:IDefaultSerializedLeaf = serialized[key];
+            const leaf = this.deserializeLeaf(val, registry, sendMessage, meta);
+            if (leaf && typeof leaf === 'function') {
+              ret[key] = leaf;
+            }
           })
         }
         return meta.reconstructed[id];
