@@ -67,7 +67,7 @@ Currently our best examples are in the test folder.
 
   try {
     // We can now request the index from cap1 on cap2:
-    const remoteApi: any = await cap2.requestIndex(remote2);
+    const remoteApi: IAsyncApiValue = await cap2.requestIndex(remote2);
 
     // Notice they are not the same objects:
     t.notEqual(remoteApi, api, 'Api objects are not the same object.');

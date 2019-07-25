@@ -42,8 +42,8 @@ test('basic serialization and api reconstruction', async (t) => {
         return t.end();
       }
 
-      if (!(key in api) || !api[key]
-        || !(key in remoteApi) || !remoteApi[key]
+      if (!(key in api)
+        || !(key in remoteApi)
       ) {
         t.fail(`Key ${key} was not found in returned api`);
         return t.end();
@@ -305,17 +305,23 @@ test('remote deallocation', async (t) => {
 })
 
 test('makes functions async', async (t) => {
-    const EXPECTED = 'Hello!'
-    const func = () => EXPECTED
-    let func2: IAsyncApiValue = await capWrap(func);
+  const EXPECTED = 'Hello!'
+  const func = () => EXPECTED
+  console.log('wrapping')
+  let func2: IAsyncApiValue = await capWrap(func);
+  console.log('wrapped')
 
-    if (func2 && typeof func2 === 'function') {
-      func2 = func2 as IAsyncFunction;
-    } else {
-      t.fail('func2 was malformed');
-      return t.end();
-    }
+  if (func2 && typeof func2 === 'function') {
+    func2 = func2 as IAsyncFunction;
+  } else {
+    t.fail('func2 was malformed'); 
+    return t.end();
+  }
 
-    const result = await func2();
-    t.equal(result, EXPECTED, 'Made function async.')
+  const result = await func2();
+  t.equal(result, EXPECTED, 'Made function async.')
+  const result2 = func2();
+  t.notEqual(result2, EXPECTED, 'returns a promise');
+  t.ok(result2 instanceof Promise, 'is a promise');
+  t.end();
 })
