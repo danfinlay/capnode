@@ -262,14 +262,11 @@ export default class DefaultSerializer {
 
           Object.keys(serialized).forEach((key:string) => {
             const val:IDefaultSerializedLeaf = serialized[key];
-            const leaf = this.deserializeLeaf(val, registry, sendMessage, meta);
-            if (leaf && typeof leaf === 'function') {
-              ret[key] = leaf;
-            }
+            ret[key] = this.deserializeLeaf(val, registry, sendMessage, meta);
           })
         }
-        return meta.reconstructed[id];
 
+      return meta.reconstructed[id];
     }
 
     throw new Error('deserializeObject called with invalid data ' + data);

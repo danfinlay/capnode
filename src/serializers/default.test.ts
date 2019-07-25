@@ -30,7 +30,7 @@ test('serializes and deserializes circular objects', (t) => {
 
     t.equal(Object.keys(input.y.x)[0], Object.keys(output.y.x)[0]);
   } else {
-    t.fail();
+    t.fail('output lacked expected keys');
     return t.end();
   }
 

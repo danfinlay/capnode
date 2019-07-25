@@ -24,7 +24,8 @@ test('basic serialization and api reconstruction', async (t) => {
     t.notEqual(remoteApi, api, 'Api objects are not the same object.');
 
     if (typeof remoteApi !== 'object' || Array.isArray(remoteApi)) {
-      return t.fail('did not return an object');
+      t.fail('did not return an object');
+      return t.end();
     }
 
     // They do, however, share the same properties and tyeps:
@@ -32,17 +33,20 @@ test('basic serialization and api reconstruction', async (t) => {
       t.ok(key in api, 'The original api has the key ' + key);
 
       if (typeof remoteApi !== 'object') {
-        return t.fail('did not return an object');
+        t.fail('did not return an object');
+        return t.end();
       }
 
       if (typeof key !== 'string') {
-        return t.fail('key was not a string');
+        t.fail('key was not a string');
+        return t.end();
       }
 
       if (!(key in api) || !api[key]
         || !(key in remoteApi) || !remoteApi[key]
       ) {
-        return t.fail(`Key ${key} was not found in returned api`);
+        t.fail(`Key ${key} was not found in returned api`);
+        return t.end();
       }
 
       t.equal(typeof remoteApi[key], typeof api[key], 'The values are the same type');
@@ -54,7 +58,8 @@ test('basic serialization and api reconstruction', async (t) => {
     })
 
     if (!remoteApi.baz || typeof remoteApi.baz !== 'function') {
-      return t.fail('baz was not a function');
+      t.fail('baz was not a function');
+      return t.end();
     }
 
     // We can even call the functions provided:
@@ -65,7 +70,7 @@ test('basic serialization and api reconstruction', async (t) => {
     t.error(err);
   }
 
-  t.end();
+  return t.end();
 })
 
 test('creating an event emitter', async (t) => {
@@ -114,7 +119,7 @@ test('creating an event emitter', async (t) => {
     // We can even call the functions provided:
     const result = await remoteApi.subscribe(async (result: IAsyncApiValue) => {
       t.equal(result, 'foo', 'The subscription was fired.');
-      t.end();
+      return t.end();
     });
     t.equal(result, 'OKAY!', 'the result was returned');
 
@@ -170,7 +175,7 @@ test('passing event emitters around', async (t) => {
     // We can even call the functions provided:
     const result = await remoteApi.subscribe(async (result: IAsyncApiValue) => {
       t.equal(result, 'foo', 'The subscription was fired.');
-      t.end();
+      return t.end();
     });
     t.equal(result, 'OKAY!', 'the result was returned');
 
@@ -191,7 +196,7 @@ test('passing functions back and forth', async (t) => {
           value: 'very well, and you?',
           reply: async (theirState: string) => {
             t.equal(theirState, 'jolly well indeed.');
-            t.end();
+            return t.end();
           }
         }
       }
@@ -240,7 +245,8 @@ test('remote deallocation', async (t) => {
 
       if (!emitter || typeof emitter !== 'object' || !('on' in emitter)
       || !emitter.on || typeof emitter.on !== 'function') {
-        return t.fail('emitter was malformed');
+        t.fail('emitter was malformed');
+        return t.end();
       }
 
       // The emitter side is going to tell this side to deallocate:
@@ -295,7 +301,7 @@ test('remote deallocation', async (t) => {
     t.error(err);
   }
 
-  t.end();
+  return t.end();
 })
 
 test('makes functions async', async (t) => {
@@ -306,7 +312,8 @@ test('makes functions async', async (t) => {
     if (func2 && typeof func2 === 'function') {
       func2 = func2 as IAsyncFunction;
     } else {
-      return t.fail('func2 was malformed');
+      t.fail('func2 was malformed');
+      return t.end();
     }
 
     const result = await func2();
