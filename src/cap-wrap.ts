@@ -1,7 +1,7 @@
-import { IAsyncApiValue } from "./@types";
+import { IAsyncApiValue, IApiValue } from "./@types";
 import Capnode from '../';
 
-export default async function capWrap (api: IAsyncApiValue): Promise<IAsyncApiValue> {
+export default async function capWrap (api: IApiValue): Promise<IAsyncApiValue> {
   const cap = new Capnode({ index: api });
   const cap2 = new Capnode({});
   const remote = cap.createRemote();

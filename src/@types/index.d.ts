@@ -1,10 +1,21 @@
 import { MethodRegistry } from "../method-registry";
+import { SerializedFormat } from "../serializers/default";
 
-export type IAsyncApiObject = { [key: string]: IAsyncApiValue };
-export type IPrimitiveValue = string | number | boolean | undefined;
-export type IAsyncAbstractValue = IAsyncApiObject | IAsyncFunction | IPrimitiveValue;
-export type IAsyncApiValue = IAsyncApiObject | IAsyncFunction | IPrimitiveValue | Array<IAsyncAbstractValue>;
-export type IAsyncFunction = (...args: any[]) => Promise<any>;
+export type IAsyncFunction = (...args: IApiValue[]) => Promise<IApiValue>;
+export interface IAsyncApiObject {
+    [key: string]:  IAsyncApiValue,
+}
+export interface IAsyncArray extends Array<IAsyncApiValue> {}
+export type IPrimitiveValue = string | number | boolean | undefined | void;
+export type IAsyncApiValue = IAsyncApiObject | IAsyncFunction | IPrimitiveValue | IAsyncArray;
+
+
+export interface IApiArray extends Array<IApiValue> {}
+export interface IApiObject {
+    [key: string]:  IApiValue,
+};
+export type IApiValue = IApiObject | Function | IPrimitiveValue | IApiArray;
+
 export interface IRemoteFunction extends IAsyncFunction {
   dealloc: Function;
 }
@@ -17,7 +28,7 @@ export type ICapnodeMessage = IInvocationMessage | IIndexMessage | IErrorMessage
 export type ICapnodeMessageAbstract = {
   type: 'index' | 'invocation' | 'error' | 'return' | 'dealloc';
   value?: any;
-  arguments?: ISerializedAsyncApiObject[];
+  arguments?: SerializedFormat;
   methodId?: string;
   replyId?: string;
 };
@@ -41,6 +52,6 @@ export interface IDeallocMessage extends ICapnodeMessageAbstract {
 export type ISerializedAsyncApiObject = string | number | boolean | object | Array<any> | undefined;
 
 export interface ICapnodeSerializer {
-  serialize: (message: IAsyncApiValue, registry: MethodRegistry) => any;
+  serialize: (message: IApiValue, registry: MethodRegistry) => unknown;
   deserialize: (data: any, registry: MethodRegistry, sendMessage: ICapnodeMessageSender) => IAsyncApiValue;
 }

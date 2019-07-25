@@ -1,5 +1,5 @@
 import { MethodRegistry } from "./src/method-registry";
-import DefaultSerializer from './src/serializers/default';
+import DefaultSerializer, { SerializedFormat } from './src/serializers/default';
 import Remote from './src/remote';
 import streamFromRemote from './src/streamFromRemote';
 import capWrap from './src/cap-wrap';
@@ -9,13 +9,13 @@ import {
   ICapnodeSerializer,
   IAsyncApiObject,
   IAsyncApiValue,
-  IAsyncFunction,
   ICapnodeMessageSender,
   IDeallocMessage,
   IReturnMessage,
   IErrorMessage,
   IInvocationMessage,
   IIndexMessage,
+  IApiValue,
  } from './src/@types/index.d';
 
 const cryptoRandomString = require('crypto-random-string');
@@ -26,7 +26,7 @@ export { Remote, streamFromRemote, capWrap };
 export default class Capnode {
   private registry: MethodRegistry;
   private serializer: ICapnodeSerializer;
-  public index: any;
+  public index?: SerializedFormat;
   public nickname?: string;
   private remotes: Set<Remote> = new Set();
 
@@ -37,7 +37,7 @@ export default class Capnode {
     nickname = 'capnode',
   }: {
     registry?: MethodRegistry;
-    index?: IAsyncApiObject;
+    index?: IApiValue;
     serializer?: ICapnodeSerializer, 
     nickname?: string,
   }) {
@@ -62,20 +62,23 @@ export default class Capnode {
     this.remotes.delete(remote);
   }
 
-  addLocalIndex (index: IAsyncApiValue): void {
+  addLocalIndex (index: IApiValue): SerializedFormat | undefined {
     this.registerAnyFunctions(index);
     this.index = this.serialize(index);
     return this.index;
   }
 
-  registerAnyFunctions (value: IAsyncApiValue): void {
+  registerAnyFunctions (value: IApiValue): void {
     switch (typeof value) {
       case 'function':
-        this.registerFunction(value);
+        const promisified = (...args: unknown[]) => Promise.resolve(value(...args));
+        this.registerFunction(promisified);
+        break;
+      case 'undefined':
         break;
       case 'object':
         if (Array.isArray(value)) {
-          value.forEach((item: IAsyncApiValue) => {
+          value.forEach((item: IApiValue) => {
             this.registerAnyFunctions(item);
           })          
         } else {
@@ -89,11 +92,11 @@ export default class Capnode {
     }
   }
 
-  registerFunction (func: IAsyncFunction) {
+  registerFunction (func: Function) {
     this.registry.registerFunction(func);
   }
 
-  serialize(value: IAsyncApiValue): any {
+  serialize(value: IApiValue): any {
     return this.serializer.serialize(value, this.registry);
   }
 
@@ -247,7 +250,6 @@ export default class Capnode {
   get registeredMethodCount(): number {
     return this.registry.registeredMethodCount;
   }
-
 }
 
 function random () {

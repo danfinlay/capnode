@@ -1,6 +1,6 @@
 import test from 'tape';
 import Capnode from '../index';
-import { IAsyncApiObject, IAsyncFunction, IAsyncApiValue, IRemoteFunction } from '../src/@types/index';
+import { IAsyncApiObject, IAsyncApiValue, IRemoteFunction } from '../src/@types/index';
 require ('../src/serializers/default.test');
 require('./streaming');
 require('./capWrap');
@@ -72,10 +72,14 @@ test('creating an event emitter', async (t) => {
    * after 100 ms.
    */
   const api: IAsyncApiObject = {
-    subscribe: async (listener: IAsyncFunction) => {
+    subscribe: async (listener) => {
       setTimeout(() => {
         try {
-          listener('foo');
+          if (listener && typeof listener === 'function') {
+            listener('foo');
+          } else {
+            t.fail('listener was no good:' + listener);
+          }
         } catch (e) { t.error(e);}
       }, 100)
       return 'OKAY!';
@@ -127,10 +131,14 @@ test('passing event emitters around', async (t) => {
    * after 100 ms.
    */
   const api: IAsyncApiObject = {
-    subscribe: async (listener: IAsyncFunction) => {
+    subscribe: async (listener) => {
       setTimeout(() => {
         try {
-          listener('foo');
+          if (typeof listener === 'function') {
+            listener('foo');
+          } else {
+            t.fail('listener was no good: ' + listener);
+          }
         } catch (e) { t.error(e);}
       }, 100)
       return 'OKAY!';
@@ -180,7 +188,7 @@ test('passing functions back and forth', async (t) => {
    * There should be no limit to how many functions we can pass back and forth:
    */
   const api: IAsyncApiObject = {
-    greet: async (greeting: string) => {
+    greet: async (greeting) => {
       if (greeting === 'how do you do?') {
         return {
           value: 'very well, and you?',
@@ -232,7 +240,10 @@ test('remote deallocation', async (t) => {
 
   const api: IAsyncApiObject = {
     receiveEvents: async (emitter) => {
-
+      if (!emitter || typeof emitter !== 'object' || !('on' in emitter) || typeof emitter.on !== 'function') {
+        t.fail('emitter is no good ' + emitter);
+        return t.end();
+      }
       // The emitter side is going to tell this side to deallocate:
       emitter.on('data', (data: string) => {
         t.equal(data, 'foo', 'event is fired correctly.');

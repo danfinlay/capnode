@@ -1,6 +1,6 @@
 import test from 'tape';
 import Capnode, { capWrap } from '../index';
-import { IAsyncApiObject, IAsyncFunction, IAsyncApiValue, IRemoteFunction } from '../src/@types/index';
+import { IAsyncApiObject, IAsyncFunction, IAsyncApiValue, IRemoteFunction, IApiValue, IApiObject } from '../src/@types/index';
 require ('../src/serializers/default.test');
 require('./streaming');
 
@@ -10,7 +10,7 @@ test('basic serialization and api reconstruction', async (t) => {
    * The API we want to make available over a serializable async boundary
    * like a network, process, or other context:
    */
-  const api: IAsyncApiObject = {
+  const api: IApiObject = {
     foo: 'bar',
     baz: async () => 'bam',
     bork: undefined,
@@ -18,14 +18,37 @@ test('basic serialization and api reconstruction', async (t) => {
 
   try {
     // We can now request the index from cap1 on cap2:
-    const remoteApi: any = await capWrap(api);
+    const remoteApi: IAsyncApiValue = await capWrap(api);
  
     // Notice they are not the same objects:
     t.notEqual(remoteApi, api, 'Api objects are not the same object.');
 
+    if (typeof remoteApi !== 'object' || Array.isArray(remoteApi)) {
+      t.fail('did not return an object');
+      return t.end();
+    }
+
     // They do, however, share the same properties and tyeps:
-   Object.keys(remoteApi).forEach((key) => {
+    Object.keys(remoteApi).forEach((key: string) => {
       t.ok(key in api, 'The original api has the key ' + key);
+
+      if (typeof remoteApi !== 'object') {
+        t.fail('did not return an object');
+        return t.end();
+      }
+
+      if (typeof key !== 'string') {
+        t.fail('key was not a string');
+        return t.end();
+      }
+
+      if (!(key in api)
+        || !(key in remoteApi)
+      ) {
+        t.fail(`Key ${key} was not found in returned api`);
+        return t.end();
+      }
+
       t.equal(typeof remoteApi[key], typeof api[key], 'The values are the same type');
 
       // Other than functions, they are even the same value:
@@ -33,6 +56,11 @@ test('basic serialization and api reconstruction', async (t) => {
         t.equal(remoteApi[key], api[key]);
       }
     })
+
+    if (!remoteApi.baz || typeof remoteApi.baz !== 'function') {
+      t.fail('baz was not a function');
+      return t.end();
+    }
 
     // We can even call the functions provided:
     const result = await remoteApi.baz();
@@ -42,7 +70,7 @@ test('basic serialization and api reconstruction', async (t) => {
     t.error(err);
   }
 
-  t.end();
+  return t.end();
 })
 
 test('creating an event emitter', async (t) => {
@@ -53,7 +81,7 @@ test('creating an event emitter', async (t) => {
    * In this example, we subscribe to a method that will call our listener function
    * after 100 ms.
    */
-  const api: IAsyncApiObject = {
+  const api: IApiObject = {
     subscribe: async (listener: IAsyncFunction) => {
       setTimeout(() => {
         try {
@@ -91,7 +119,7 @@ test('creating an event emitter', async (t) => {
     // We can even call the functions provided:
     const result = await remoteApi.subscribe(async (result: IAsyncApiValue) => {
       t.equal(result, 'foo', 'The subscription was fired.');
-      t.end();
+      return t.end();
     });
     t.equal(result, 'OKAY!', 'the result was returned');
 
@@ -108,7 +136,7 @@ test('passing event emitters around', async (t) => {
    * In this example, we subscribe to a method that will call our listener function
    * after 100 ms.
    */
-  const api: IAsyncApiObject = {
+  const api: IApiObject = {
     subscribe: async (listener: IAsyncFunction) => {
       setTimeout(() => {
         try {
@@ -147,7 +175,7 @@ test('passing event emitters around', async (t) => {
     // We can even call the functions provided:
     const result = await remoteApi.subscribe(async (result: IAsyncApiValue) => {
       t.equal(result, 'foo', 'The subscription was fired.');
-      t.end();
+      return t.end();
     });
     t.equal(result, 'OKAY!', 'the result was returned');
 
@@ -161,14 +189,14 @@ test('passing functions back and forth', async (t) => {
   /**
    * There should be no limit to how many functions we can pass back and forth:
    */
-  const api: IAsyncApiObject = {
+  const api: IApiValue = {
     greet: async (greeting: string) => {
       if (greeting === 'how do you do?') {
         return {
           value: 'very well, and you?',
           reply: async (theirState: string) => {
             t.equal(theirState, 'jolly well indeed.');
-            t.end();
+            return t.end();
           }
         }
       }
@@ -215,6 +243,12 @@ test('remote deallocation', async (t) => {
   const api: IAsyncApiObject = {
     receiveEvents: async (emitter) => {
 
+      if (!emitter || typeof emitter !== 'object' || !('on' in emitter)
+      || !emitter.on || typeof emitter.on !== 'function') {
+        t.fail('emitter was malformed');
+        return t.end();
+      }
+
       // The emitter side is going to tell this side to deallocate:
       emitter.on('data', (data: string) => {
         t.equal(data, 'foo', 'event is fired correctly.');
@@ -236,7 +270,7 @@ test('remote deallocation', async (t) => {
   remote2.addRemoteMessageListener((message) => remote.receiveMessage(message));
 
   try {
-    const remoteApi: any = await cap2.requestIndex(remote2);
+    const remoteApi: IAsyncApiValue = await cap2.requestIndex(remote2);
 
     const listeners: IRemoteFunction[] = [];
     const emitter = {
@@ -257,13 +291,37 @@ test('remote deallocation', async (t) => {
       }
     };
 
+    if (!('receiveEvents' in remoteApi) || typeof remoteApi['receiveEvents'] !== 'function') {
+      t.fail('remote api lacked subscription method')
+      return t.end()
+    }
     await remoteApi.receiveEvents(emitter);
 
   } catch (err) {
     t.error(err);
   }
 
-  t.end();
+  return t.end();
 })
 
+test('makes functions async', async (t) => {
+  const EXPECTED = 'Hello!'
+  const func = () => EXPECTED
+  console.log('wrapping')
+  let func2: IAsyncApiValue = await capWrap(func);
+  console.log('wrapped')
 
+  if (func2 && typeof func2 === 'function') {
+    func2 = func2 as IAsyncFunction;
+  } else {
+    t.fail('func2 was malformed'); 
+    return t.end();
+  }
+
+  const result = await func2();
+  t.equal(result, EXPECTED, 'Made function async.')
+  const result2 = func2();
+  t.notEqual(result2, EXPECTED, 'returns a promise');
+  t.ok(result2 instanceof Promise, 'is a promise');
+  t.end();
+})
