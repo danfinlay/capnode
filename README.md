@@ -32,49 +32,18 @@ Until [WeakReference](https://ponyfoo.com/articles/weakref) is added to the Java
 
 We have an example in [the example folder](./src/example).
 
-It works like this:
-
-```typescript
-// server.js
-
-import Capnode from 'capnode';
-var net = require('net');
-const through = require('through2');
-
-
-
-console.log('creating capnode client')
-const capnode = new Capnode({});
-const remote = capnode.createRemote();
-
-console.log('initializing clinet stream connection');
-var remoteStream = net.connect(5004);
-remoteStream.pipe(remote).pipe(remoteStream);
-
-async function connect() {
-    const index = await capnode.requestIndex(remote);
-    const transformed = await index.transform('beep');
-    console.log('beep => ' + transformed);
-}
-
-connect()
-.then(console.log)
-.catch(console.error)
-
-```
-
-Client then connects and can call the remote function:
+It works like this. First you create a server:
 
 ```typescript
 import { Stream } from "stream";
-var Capnode = require('../../index').default;
+const Capnode = require('../../index').default;
 
-var net = require('net');
+const net = require('net');
 
 console.log('creating server')
-var server = net.createServer(function (serverStream: Stream) {
+const server = net.createServer(function (serverStream: Stream) {
     console.log('server created, creating capnode for serving')
-    var capnode = new Capnode({
+    const capnode = new Capnode({
         index: {
             transform : function (s:string) {
                 return s.replace(/[aeiou]{2,}/, 'oo').toUpperCase()
@@ -89,6 +58,33 @@ var server = net.createServer(function (serverStream: Stream) {
 console.log('server listening...')
 server.listen(5004);
 console.log('server listening on port 5004');
+```
+
+Client then connects, can request the index API, and can call provided functions:
+
+```typescript
+import Capnode from 'capnode';
+const net = require('net');
+const through = require('through2');
+
+console.log('creating capnode client')
+const capnode = new Capnode({});
+const remote = capnode.createRemote();
+
+console.log('initializing clinet stream connection');
+const remoteStream = net.connect(5004);
+remoteStream.pipe(remote).pipe(remoteStream);
+
+async function connect() {
+    const index = await capnode.requestIndex(remote);
+    const transformed = await index.transform('beep');
+    console.log('beep => ' + transformed);
+}
+
+connect()
+.then(console.log)
+.catch(console.error)
+
 ```
 
 ### Test Example:
