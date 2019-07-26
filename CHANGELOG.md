@@ -1,5 +1,9 @@
 # Changelog
 
+## Version 4.0.0
+
+Converted streams from `objectMode` to pure text chunks.
+
 ## Version 3.0.0
 
 Full Typescript rewrite, broke basically every important API except the basic usage of passing objects around.
