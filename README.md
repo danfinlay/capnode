@@ -30,7 +30,70 @@ Until [WeakReference](https://ponyfoo.com/articles/weakref) is added to the Java
 
 ## Usage Example
 
-Currently our best examples are in the test folder.
+We have an example in [the example folder](./src/example).
+
+It works like this:
+
+```typescript
+// server.js
+
+import Capnode from 'capnode';
+var net = require('net');
+const through = require('through2');
+
+
+
+console.log('creating capnode client')
+const capnode = new Capnode({});
+const remote = capnode.createRemote();
+
+console.log('initializing clinet stream connection');
+var remoteStream = net.connect(5004);
+remoteStream.pipe(remote).pipe(remoteStream);
+
+async function connect() {
+    const index = await capnode.requestIndex(remote);
+    const transformed = await index.transform('beep');
+    console.log('beep => ' + transformed);
+}
+
+connect()
+.then(console.log)
+.catch(console.error)
+
+```
+
+Client then connects and can call the remote function:
+
+```typescript
+import { Stream } from "stream";
+var Capnode = require('../../index').default;
+
+var net = require('net');
+
+console.log('creating server')
+var server = net.createServer(function (serverStream: Stream) {
+    console.log('server created, creating capnode for serving')
+    var capnode = new Capnode({
+        index: {
+            transform : function (s:string) {
+                return s.replace(/[aeiou]{2,}/, 'oo').toUpperCase()
+            }
+        }
+    });
+    const remote = capnode.createRemote();
+    console.log('capnode initialized')
+    serverStream.pipe(remote).pipe(serverStream);
+});
+
+console.log('server listening...')
+server.listen(5004);
+console.log('server listening on port 5004');
+```
+
+### Test Example:
+
+This example combines client and server code in one block, sorry if that's confusing:
 
 ```javascript
   /**
