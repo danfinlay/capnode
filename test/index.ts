@@ -1,5 +1,5 @@
 import test from 'tape';
-import Capnode from '../index';
+import Capnode, { capWrap } from '../index';
 import { IAsyncApiObject, IAsyncApiValue, IRemoteFunction } from '../src/@types/index';
 require ('../src/serializers/default.test');
 require('./streaming');
@@ -295,4 +295,33 @@ test('remote deallocation', async (t) => {
   t.end();
 })
 
+test('proxy unwrapping', async (t) => {
+
+  const specialObject = {};
+  const api: IAsyncApiObject = {
+    specialObject,
+    isSpecialObject: async (obj: any) => {
+      return obj === specialObject;
+    },
+  }
+
+  try {
+    // We can now request the index from cap1 on cap2:
+    const remoteApi: IAsyncApiValue = await capWrap(api);
+    if (!remoteApi || typeof remoteApi !== 'object' || !('isSpecialObject' in remoteApi)
+    || typeof remoteApi.isSpecialObject !== 'function'
+    || !('specialObject' in remoteApi)) {
+      return t.fail('API not properly reconstructed.')
+    }
+
+    const specialProxy: IAsyncApiValue = remoteApi.specialObject;
+    const result = await remoteApi.isSpecialObject(specialProxy);
+    t.equal(result, true, 'Proxy should be special');
+
+  } catch (err) {
+    t.error(err);
+  }
+
+  t.end();
+})
 
