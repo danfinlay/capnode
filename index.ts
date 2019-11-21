@@ -253,5 +253,5 @@ export default class Capnode {
 }
 
 function random () {
-  return cryptoRandomString(k_BYTES_OF_ENTROPY)
+  return cryptoRandomString(k_BYTES_OF_ENTROPY * 2)
 }
