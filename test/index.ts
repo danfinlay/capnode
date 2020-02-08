@@ -1,6 +1,6 @@
 import test from 'tape';
 import Capnode from '../index';
-import { IAsyncApiObject, IAsyncApiValue, IRemoteFunction } from '../src/@types/index';
+import { IAsyncApiObject, IAsyncApiValue, IRemoteFunction, IRemoteAsyncMethod } from '../src/@types/index';
 require ('../src/serializers/default.test');
 require('./streaming');
 require('./capWrap');
@@ -295,4 +295,65 @@ test('remote deallocation', async (t) => {
   t.end();
 })
 
+test('third party method reconstruction', async (t) => {
 
+  /**
+   * The API we want to make available over a serializable async boundary
+   * like a network, process, or other context:
+   */
+  const api: IAsyncApiObject = {
+    foo: 'bar',
+    baz: async () => 'bam',
+    bork: undefined,
+  }
+
+  // A capnode is made a server by receiving an API as its index:
+  const host = new Capnode({
+    index: api,
+    nickname: 'host',
+  });
+
+  // A client is created, perhaps in another process:
+  const client1 = new Capnode({ nickname: 'client1' });
+
+  // A third party is created, a friend to receive a delegation:
+  const client2 = new Capnode({ nickname: 'client2' });
+
+  // Each capnode creates a remote, representing its connection to the other:
+  // Host makes two connections, one for each connected peer:
+  const hostRemote = host.createRemote();
+  const hostRemote2 = host.createRemote();
+
+  const clientRemote1 = client1.createRemote();
+  const clientRemote2 = client2.createRemote();
+
+  // First client connects to host
+  hostRemote.addRemoteMessageListener((message) => clientRemote1.receiveMessage(message));
+  clientRemote1.addRemoteMessageListener((message) => hostRemote.receiveMessage(message));
+
+  // client2 connects to host
+  hostRemote2.addRemoteMessageListener((message) => clientRemote2.receiveMessage(message));
+  clientRemote2.addRemoteMessageListener((message) => hostRemote2.receiveMessage(message));
+
+  try {
+    // We can now request the index from cap1 on cap2:
+    const remoteApi: any = await client1.requestIndex(clientRemote1);
+
+    const baz: IRemoteAsyncMethod = remoteApi.baz;
+    const bazId = baz.capId;
+
+    const baz2 = clientRemote2.reconstruct(bazId || '');
+
+    // Notice they are not the same objects:
+    t.notEqual(baz, baz2, 'Api objects are not the same object.');
+
+    // We should be able to normally call reconstructed objects:
+    const result = await baz2();
+    t.equal(result, 'bam');
+
+  } catch (err) {
+    t.error(err);
+  }
+
+  t.end();
+})
