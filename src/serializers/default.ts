@@ -6,12 +6,13 @@ import {
   IDeallocMessage,
   IApiValue,
   IAsyncArray,
-} from '../@types/index.d';
+} from '../@types/index';
 const cryptoRandomString = require('crypto-random-string');
 const k_BYTES_OF_ENTROPY = 20;
 
-interface IRemoteAsyncMethod extends IAsyncFunction {
+export interface IRemoteAsyncMethod extends IAsyncFunction {
   dealloc?: () => void;
+  capId?: string;
 }
 
 enum LinkableType {
@@ -288,6 +289,7 @@ export default class DefaultSerializer {
 
       });
     };
+    result.capId = methodId;
     result.dealloc = () => {
       return new Promise((res, rej) => {
         const deallocId = random();

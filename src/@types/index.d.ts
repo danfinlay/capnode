@@ -1,5 +1,6 @@
 import { MethodRegistry } from "../method-registry";
-import { SerializedFormat } from "../serializers/default";
+import { SerializedFormat, IRemoteAsyncMethod } from "../serializers/default";
+export { IRemoteAsyncMethod } from "../serializers/default";
 
 export type IAsyncFunction = (...args: IApiValue[]) => Promise<IApiValue>;
 export interface IAsyncApiObject {
@@ -54,4 +55,5 @@ export type ISerializedAsyncApiObject = string | number | boolean | object | Arr
 export interface ICapnodeSerializer {
   serialize: (message: IApiValue, registry: MethodRegistry) => unknown;
   deserialize: (data: any, registry: MethodRegistry, sendMessage: ICapnodeMessageSender) => IAsyncApiValue;
+  deserializeFunction: (methodId: string, registry: MethodRegistry, sendMessage: ICapnodeMessageSender) => IRemoteAsyncMethod; 
 }
