@@ -53,7 +53,7 @@ export default class Capnode {
   createRemote(): Remote {
     const remote = new Remote((message: ICapnodeMessage) => {
       this.processMessage(message, remote);
-    });
+    }, this.registry, this.serializer);
     this.remotes.add(remote);
     return remote;
   }

@@ -1,14 +1,11 @@
 # CapNode [![CircleCI](https://circleci.com/gh/danfinlay/capnode.svg?style=svg)](https://circleci.com/gh/danfinlay/capnode)
 
-Sharing objects and their methods over a JSON transport as easy as passing around the JS Objects themselves. [Sometimes called](http://blog.ezyang.com/2013/03/what-is-a-membran/) remote proxy objects.
-
-Very much inspired by [dnode](https://www.npmjs.com/package/dnode), but intended to be extended in a few different directions.
-
-Created to make it especially easy for developers to very intuitively create externally consumable APIs.
+Sharing objects and their promise-returning methods over a JSON transport (nearly) as easy as passing around the JS Objects themselves. [Sometimes called](http://blog.ezyang.com/2013/03/what-is-a-membran/) remote proxy objects.
 
 ## Status
 
-Very early WIP, needs thorough audit and QA.
+Version `4.0.2` underwent a security audit, but is continuing under some active development in new potentially dangerous directions:
+- One client of a host can now pass its method access to another client.
 
 External APIs are pretty simple, so they may be stable, but until [we](https://metamask.io/) are using it in production, I will probably break APIs freely.
 
@@ -85,6 +82,32 @@ connect()
 .then(console.log)
 .catch(console.error)
 
+```
+
+### Delegation Example
+
+Every remote function returned from capnode has an id, and you can use this to pass access control over a function from one client to another.
+
+For example, accessing the method Id from client 1:
+
+```typescript
+const remoteApi: any = await client1.requestIndex(clientRemote1);
+
+const baz: IRemoteAsyncMethod = remoteApi.baz;
+const bazId = baz.capId;
+```
+
+If we assume that `bazId` is now transmitted to another client who has their own `remote` connected to the host, they can construct a method from that Id alone:
+
+```typescript
+const baz2 = clientRemote2.reconstruct(bazId);
+
+// Notice they are not the same objects:
+t.notEqual(baz, baz2, 'Api objects are not the same object.');
+
+// We should be able to normally call reconstructed objects:
+const result = await baz2();
+t.equal(result, 'bam');
 ```
 
 ### Test Example:
