@@ -307,9 +307,7 @@ test('remote deallocation', async (t) => {
 test('makes functions async', async (t) => {
   const EXPECTED = 'Hello!'
   const func = () => EXPECTED
-  console.log('wrapping')
   let func2: IAsyncApiValue = await capWrap(func);
-  console.log('wrapped')
 
   if (func2 && typeof func2 === 'function') {
     func2 = func2 as IAsyncFunction;
@@ -325,3 +323,45 @@ test('makes functions async', async (t) => {
   t.ok(result2 instanceof Promise, 'is a promise');
   t.end();
 })
+
+test('functions can be returned from functions', async (t) => {
+  const EXPECTED = 'Hello!'
+  const funcReturningFunc = () => {
+    return async () => EXPECTED;
+  };
+  const index = {
+    funcReturningFunc
+  };
+  const remoteIndex: IAsyncApiValue = await capWrap(index);
+
+  if (typeof remoteIndex !== 'object' || !('funcReturningFunc' in remoteIndex)) {
+    t.fail('remote index lacked required property');
+    return t.end();
+  }
+
+  let func2 = await remoteIndex.funcReturningFunc;
+
+  if (func2 && typeof func2 === 'function') {
+    func2 = func2 as IAsyncFunction;
+  } else {
+    t.fail('func2 was malformed'); 
+    return t.end();
+  }
+
+  let func3 = await func2();
+
+  if (func3 && typeof func3 === 'function') {
+    func3 = func3 as IAsyncFunction;
+  } else {
+    t.fail('func3 was malformed'); 
+    return t.end();
+  }
+
+  const result = await func3();
+  t.equal(result, EXPECTED, 'Made function async.')
+  const result2 = func2();
+  t.notEqual(result2, EXPECTED, 'returns a promise');
+  t.ok(result2 instanceof Promise, 'is a promise');
+  t.end();
+})
+
